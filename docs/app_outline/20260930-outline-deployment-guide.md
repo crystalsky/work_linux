@@ -4,7 +4,7 @@ type: note
 status: active
 scope: app_outline
 created: 2026-09-30 15:41:51
-updated: 2026-09-30 15:41:51
+updated: 2026-10-16 13:50:00
 summary: "在内网 Ubuntu 22.04 上以 Docker Compose 部署 Outline（Postgres+Redis+应用+Nginx TLS），自签证书提供 HTTPS（8443），复用内网 MaILU SMTP 实现邮件魔法链接登录，并含首个团队/管理员的引导方法、验证与镜像打包"
 keywords: [linux, ubuntu, outline, wiki, knowledgebase, docker-compose, https, postgres, redis, mailu, smtp]
 verification: "docker compose ps; curl -k -o /dev/null -w '%{http_code}' https://<ip>:8443/"
@@ -17,6 +17,11 @@ ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改
 > 内网部署 Outline 团队知识库。Outline 需 Postgres（含 `pg_trgm`）、Redis、对象/本地存储，且**登录必须至少一种认证方式**。
 > 本机无 SSO/IdP，采用 **SMTP 邮件魔法链接登录**（复用上一章部署的内网 MaILU）。HTTPS 由 Nginx 反代提供（本机 443 已被 MaILU 占用，故用 **8443**）。
 > 访问：`https://outline.vire.local:8443`；团队 `Vire`；管理员 `admin@vire.local`。
+
+> [!TIP]
+> 若需与其它服务共用 `443/80`（不使用 Outline 自带的 `proxy` 容器），可采用**宿主机 nginx 反向代理**方案：
+> 由宿主机 nginx 终结 TLS、按 `server_name` 分流，Outline 仅在 `127.0.0.1:3000` 暴露。
+> 详见《Outline 数据备份与迁移手册》第 8 节的目标机部署实测（含宿主 nginx 配置、firewalld 放行、SMTP 公网端口等要点）。
 
 ## ⚙️ 核心内容
 
@@ -271,3 +276,4 @@ cd /home/dministrator/outline && docker compose up -d
 - [Outline 自托管文档](https://docs.getoutline.com/s/hosting)
 - [Outline SMTP 配置](https://docs.getoutline.com/s/hosting/doc/smtp-cqCJyZGMIB)
 - [本仓库：MaILU 部署手册](../mail_mailu/20260930-mailu-deployment-guide.md)
+- [本仓库：Outline 数据备份与迁移手册（含宿主 nginx 反代部署实测）](20261015-outline-backup-migration-guide.md)

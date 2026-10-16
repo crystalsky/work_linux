@@ -4,8 +4,8 @@ type: note
 status: active
 scope: app_outline
 created: 2026-10-15 08:50:00
-updated: 2026-10-15 09:05:00
-summary: "为现有 Outline（Docker Compose：postgres/redis/outline/proxy）提供全量备份与迁移方案，覆盖数据库逻辑备份、附件、配置与证书，配套 scripts/backup/outline_backup.sh 一键备份/恢复/巡检，含异地迁移与验证步骤"
+updated: 2026-10-16 13:40:00
+summary: "为现有 Outline（Docker Compose：postgres/redis/outline/proxy）提供全量备份与迁移方案，覆盖数据库逻辑备份、附件、配置与证书，配套 scripts/backup/outline_backup.sh 一键备份/恢复/巡检，含异地迁移与验证步骤；2026-10-16 记录迁移至 SERVER_44（宿主 nginx 反向代理 + 数据恢复）实测"
 keywords: [linux, ubuntu, outline, wiki, knowledgebase, backup, migration, postgres, docker-compose]
 verification: "outline_backup.sh list; docker compose ps"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。严禁在文档中写入真实 SECRET_KEY/UTILS_SECRET/数据库口令/SMTP 口令及证书私钥内容。"
@@ -185,6 +185,159 @@ curl -k -o /dev/null -w "%{http_code}\n" https://<outline-host>:8443/auth/email 
 sudo bash scripts/backup/outline_backup.sh --dir /data/outline list
 (cd /data/outline/backups/outline-<时间戳> && sudo sha256sum -c SHA256SUMS)
 ```
+
+### 8. 目标机部署实测（SERVER_44：宿主 nginx 反向代理 + 数据恢复）
+
+> [!NOTE]
+> 本节记录一次跨主机迁移实测：源 **90**（`192.168.16.90`）→ 目标 **44**（`192.168.12.44`）。
+> 目标机**不使用** Outline 自带的 `proxy` 容器，改由**宿主机 nginx** 统一终结 `443/80` 并按 `server_name` 分流
+> （便于后续与其它服务共用端口），反向代理到 `127.0.0.1:3000`。
+
+**实测环境（2026-10-16）**
+
+| 项 | 源机 90 | 目标机 44 |
+|----|---------|-----------|
+| 地址 / 用户 | `192.168.16.90` / `vire` | `192.168.12.44` / `root` |
+| 部署目录 | `/data/outline` | `/data/outline` |
+| 访问地址 | `https://192.168.16.90:8443` | `https://doc.cdvire.cn`（宿主 nginx `443`） |
+| 备份来源 | `outline-20261016-125312` | 同左（已复制入 `backups/`） |
+| TLS 证书 | 自签 `outline.vire.local` | `*.cdvire.cn` / `*.vire.cn`（VIRE Internal CA） |
+| SMTP | 容器 `postfix:465`（共享网络） | `mail.cdvire.cn:10465`（公网 SMTPS） |
+
+**8.1 数据恢复**
+
+```bash
+# 目标机已导入镜像；冷启动需先拉起 DB/Redis（restore 依赖 postgres 已在运行）
+cd /data/outline
+docker-compose up -d postgres outline-redis          # 等待 postgres healthy
+
+# 从备份目录恢复（覆盖库/附件/配置）
+bash outline_backup.sh --dir /data/outline \
+  --from /data/outline/backups/outline-20261016-125312 restore --yes
+
+# 核对数据
+docker exec outline-postgres-1 psql -U outline -d outline -tAc \
+  "select (select count(*) from users) u,(select count(*) from documents) d;"
+```
+
+> [!IMPORTANT]
+> compose 若声明外部网络 `mailcowdockerized_mailcow-network`，目标机须先
+> `docker network create mailcowdockerized_mailcow-network`，否则 `up` 报 `external network ... not found`。
+
+**8.2 改造为宿主 nginx 反代**
+
+`docker-compose.yml`：删除 `proxy` 服务，给 `outline` 增加宿主回环端口映射：
+
+```yaml
+  outline:
+    image: outlinewiki/outline:latest
+    # ...（其余配置不变）
+    ports:
+      - "127.0.0.1:3000:3000"     # 仅供宿主 nginx 转发，避免占用公网端口
+```
+
+```bash
+docker-compose up -d --remove-orphans       # 移除 proxy 容器，重建 outline
+```
+
+安装宿主机 nginx 并放置证书：
+
+```bash
+apt-get install -y nginx
+install -m 0644 server.crt /etc/nginx/certs/server.crt
+install -m 0600 server.key /etc/nginx/certs/server.key
+```
+
+新增 `/etc/nginx/conf.d/doc.cdvire.cn.conf`：
+
+```nginx
+server {
+    listen 80;
+    server_name doc.cdvire.cn doc.vire.cn;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl http2;
+    server_name doc.cdvire.cn doc.vire.cn;
+    ssl_certificate     /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    client_max_body_size 262144000;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+```bash
+nginx -t && systemctl reload nginx
+```
+
+**8.3 更新 URL 与 SMTP**
+
+```bash
+cd /data/outline
+sed -i 's|^URL=.*|URL=https://doc.cdvire.cn|' outline.env
+sed -i 's|^SMTP_HOST=.*|SMTP_HOST=mail.cdvire.cn|' outline.env
+sed -i 's|^SMTP_PORT=.*|SMTP_PORT=10465|' outline.env          # mailcow 前缀端口（SMTPS）
+docker-compose up -d --force-recreate outline
+```
+
+**8.4 验证**
+
+```bash
+docker-compose ps                                            # postgres/redis/outline healthy，无 proxy
+curl -sk -o /dev/null -w "%{http_code}\n" \
+  --resolve doc.cdvire.cn:443:127.0.0.1 https://doc.cdvire.cn/            # 200
+curl -sk -o /dev/null -w "%{http_code}\n" \
+  --resolve doc.cdvire.cn:443:127.0.0.1 https://doc.cdvire.cn/auth/email  # 200
+
+# 容器内 SMTP 校验（不实际发信）
+docker exec -i outline-outline-1 node - <<'JS'
+const nm=require("/opt/outline/node_modules/nodemailer");
+nm.createTransport({host:process.env.SMTP_HOST,port:+process.env.SMTP_PORT,
+  secure:String(process.env.SMTP_SECURE)==="true",
+  auth:{user:process.env.SMTP_USERNAME,pass:process.env.SMTP_PASSWORD},
+  tls:{rejectUnauthorized:false}}).verify(e=>console.log(e?"ERR "+e.message:"SMTP OK"));
+JS
+```
+
+**实测结果（2026-10-16）**
+
+- 数据恢复：`users=4 / documents=36 / collections=6`，附件 `data/` ≈ 47M（与源机一致）。
+- 三容器 `postgres/redis/outline` healthy；`proxy` 已移除，`8443` 释放。
+- 宿主 nginx `443`：`/`、`/auth/email`、`/_health` 均 **200**；`http://doc.cdvire.cn` 301 → `https://doc.cdvire.cn/`。
+- SMTP：`mail.cdvire.cn:10465` 握手与认证通过（`SMTP VERIFY OK`）。
+
+**改造要点与坑**
+
+- **冷启动顺序**：`restore` 的库导入依赖 `postgres` 容器已在运行（脚本用 `docker-compose exec` 进容器），
+  裸目标机须先 `up -d postgres outline-redis` 再 `restore`。
+- **SMTP 端口**：mailcow 采用 `10` 前缀端口（`SMTPS_PORT=10465`、`SUBMISSION_PORT=10587`），**并非** `465/587`；
+  跨机发信须指向实际端口（见 `mailcow.conf`）。
+- **URL / OIDC 回调 / 证书 SAN 三者一致**：均须指向同一对外域名（本次为 `doc.cdvire.cn`）。
+- **端口共用**：宿主 nginx 按 `server_name` 分流 `443/80`，Outline 仅在 `127.0.0.1:3000` 暴露。
+- **宿主防火墙**：目标机启用 firewalld 时，主网卡默认区（`public`）通常仅放行 `ssh`，须显式放行 web 端口，
+  否则局域网访问 `80/443` 会被 `REJECT`（现象：`No route to host`、浏览器无法访问）：
+
+  ```bash
+  firewall-cmd --permanent --add-service=http --add-service=https
+  firewall-cmd --reload
+  firewall-cmd --zone=public --list-services      # 应含 http https
+  ```
+
+- **OIDC 回调须登记新域名**：`URL` 变更后，Keycloak 客户端 `outline` 必须同步新增
+  `Valid redirect URIs = https://doc.cdvire.cn/auth/oidc/callback`、`Valid post logout redirect URIs = https://doc.cdvire.cn`、
+  `Web origins = https://doc.cdvire.cn`，否则回跳报 `invalid parameter: redirect_uri`（Keycloak 侧改动**无需**重启 Outline）。
+  详见《Outline 接入 Keycloak OIDC 单点登录配置手册》。
 
 ## ⚠️ 注意事项
 

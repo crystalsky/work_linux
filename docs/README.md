@@ -133,9 +133,10 @@
 - **app_ops_platform**
   - [OpenWebUI + Dify + n8n 容器化运维平台部署指南](app_ops_platform/20260609-openwebui-dify-n8n-deploy-guide.md)
 - **app_outline**
-  - [Outline 内网知识库 Docker Compose 部署手册（HTTPS + 邮件登录）](app_outline/20260930-outline-deployment-guide.md)
+  - [Outline 内网知识库 Docker Compose 部署手册（HTTPS + 邮件登录）](app_outline/20260930-outline-deployment-guide.md)（宿主 nginx 反代变体见迁移手册 §8）
   - [Outline 内网知识库配置与使用手册（邮件登录/团队/存储/API/备份）](app_outline/20260930-outline-configuration-guide.md)
-  - [Outline 内网知识库数据备份与迁移手册（全量备份脚本 + 异地迁移）](app_outline/20261015-outline-backup-migration-guide.md)（含 `scripts/backup/outline_backup.sh`）
+  - [Outline 接入 Keycloak OIDC 单点登录配置手册（客户端/回调/email_verified 排障，含域名变更回调补充）](app_outline/20261014-outline-keycloak-oidc-sso-config.md)
+  - [Outline 内网知识库数据备份与迁移手册（全量备份脚本 + 异地迁移）](app_outline/20261015-outline-backup-migration-guide.md)（含 `scripts/backup/outline_backup.sh`；§8 记录迁移至 SERVER_44 宿主 nginx 反代 + 数据恢复实测）
 
 ### 📧 邮件（mail_*）
 
