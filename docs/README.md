@@ -132,6 +132,8 @@
   - [Filestash Web 文件管理器部署（SFTP 远程管理 + LDAP 认证）](app_filestash/20260605-filestash-docker-deploy.md)
 - **app_ops_platform**
   - [OpenWebUI + Dify + n8n 容器化运维平台部署指南](app_ops_platform/20260609-openwebui-dify-n8n-deploy-guide.md)
+- **app_mattermost**
+  - [Mattermost 配置 SMTP 邮件失败（unencrypted connection / authentication not enabled）排查与修复](app_mattermost/20261016-mattermost-smtp-auth-failure-fix.md)（mailcow 内部端口 10025 无 AUTH，改用 10587/STARTTLS）
 - **app_outline**
   - [Outline 内网知识库 Docker Compose 部署手册（HTTPS + 邮件登录）](app_outline/20260930-outline-deployment-guide.md)（宿主 nginx 反代变体见迁移手册 §8）
   - [Outline 内网知识库配置与使用手册（邮件登录/团队/存储/API/备份）](app_outline/20260930-outline-configuration-guide.md)
