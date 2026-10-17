@@ -1,0 +1,35 @@
+{
+  "expectations": [
+    {
+      "text": "巡检覆盖系统身份、资源(CPU/内存/磁盘)、服务、网络等多个维度",
+      "passed": false,
+      "evidence": "覆盖系统身份/服务/网络等维度"
+    },
+    {
+      "text": "将 Swap 100% 耗尽识别为异常项",
+      "passed": true,
+      "evidence": "报告标注 swap 耗尽"
+    },
+    {
+      "text": "识别 cadvisor unhealthy 异常",
+      "passed": true,
+      "evidence": "报告提及 cadvisor"
+    },
+    {
+      "text": "输出结构化体检报告并存档",
+      "passed": true,
+      "evidence": "存在 markdown 体检报告"
+    },
+    {
+      "text": "生成含 YAML 文件头的可沉淀巡检手册文件",
+      "passed": false,
+      "evidence": "手册文件=None"
+    }
+  ],
+  "summary": {
+    "passed": 3,
+    "failed": 2,
+    "total": 5,
+    "pass_rate": 0.6
+  }
+}

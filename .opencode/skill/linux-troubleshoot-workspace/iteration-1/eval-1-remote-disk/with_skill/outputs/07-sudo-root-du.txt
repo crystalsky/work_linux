@@ -1,0 +1,47 @@
+=== sudo du -xhd1 / ===
+135G	/
+128G	/var
+2.6G	/usr
+2.1G	/workspace
+1.4G	/opt
+960M	/root
+24M	/etc
+68K	/tmp
+0	/work_space
+0	/srv
+0	/mnt
+0	/media
+0	/data-ext
+0	/afs
+
+=== sudo du -xhd1 /var/lib/docker ===
+128G	/var/lib/docker
+122G	/var/lib/docker/overlay2
+5.3G	/var/lib/docker/volumes
+183M	/var/lib/docker/image
+155M	/var/lib/docker/containers
+1.4M	/var/lib/docker/network
+1.1M	/var/lib/docker/containerd
+176K	/var/lib/docker/buildkit
+0	/var/lib/docker/trust
+0	/var/lib/docker/tmp
+0	/var/lib/docker/swarm
+0	/var/lib/docker/runtimes
+0	/var/lib/docker/plugins
+
+=== sudo du -xhd1 /var ===
+128G	/var/lib
+128G	/var
+220M	/var/log
+79M	/var/cache
+20K	/var/tmp
+12K	/var/spool
+0	/var/yp
+0	/var/preserve
+0	/var/opt
+0	/var/nis
+0	/var/local
+0	/var/kerberos
+0	/var/games
+0	/var/ftp
+0	/var/empty

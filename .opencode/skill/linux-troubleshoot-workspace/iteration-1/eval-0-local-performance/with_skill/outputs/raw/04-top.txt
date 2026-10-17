@@ -1,0 +1,26 @@
+=== top -bn1 (head -25) ===
+top - 17:50:38 up 22 days, 21:45,  1 user,  load average: 8.95, 8.85, 8.61
+Tasks: 595 total,   1 running, 594 sleeping,   0 stopped,   0 zombie
+%Cpu(s): 40.8 us,  2.8 sy,  0.0 ni, 56.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  31778.4 total,    310.4 free,  27795.9 used,   4599.2 buff/cache     
+MiB Swap:  15625.0 total,      5.0 free,  15620.0 used.   3982.5 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  81891 vire      20   0 1224.7g 843676  98072 S 672.7   2.6    20w+0d tabby
+1741651 vire      20   0   71.5g 618168  92628 S  45.5   1.9   3:06.77 opencode
+  69893 vire      20   0   71.8g 333576  23640 S   9.1   1.0 223:26.78 opencode
+  73773 root      20   0   24.5g 136952  80552 S   9.1   0.4 125:53.76 Xorg
+  74145 vire      20   0 5252076 380800 101500 S   9.1   1.2 233:10.59 cinnamon
+ 238297 libvirt+  20   0   25.1g   9.8g  12600 S   9.1  31.7    5d+13h qemu-sy+
+ 750585 vire      20   0  881696  62764  45688 S   9.1   0.2   9:08.59 gnome-t+
+ 892131 vire      20   0   72.1g 878756  83340 S   9.1   2.7 142:24.24 opencode
+1745648 vire      20   0   17604   5664   3480 R   9.1   0.0   0:00.01 top
+      1 root      20   0   23180  11172   7228 S   0.0   0.0   1:26.71 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:02.29 kthreadd
+      3 root      20   0       0      0      0 S   0.0   0.0   0:00.00 pool_wo+
+      4 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker+
+      5 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker+
+      6 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker+
+      7 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker+
+      8 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker+
+     10 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker+

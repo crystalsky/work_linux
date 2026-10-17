@@ -1,0 +1,45 @@
+===== /etc/os-release =====
+NAME="Rocky Linux"
+VERSION="9.8 (Blue Onyx)"
+RELEASE_TYPE="stable"
+ID="rocky"
+ID_LIKE="rhel centos fedora"
+VERSION_ID="9.8"
+PLATFORM_ID="platform:el9"
+PRETTY_NAME="Rocky Linux 9.8 (Blue Onyx)"
+ANSI_COLOR="0;32"
+LOGO="fedora-logo-icon"
+CPE_NAME="cpe:/o:rocky:rocky:9::baseos"
+HOME_URL="https://rockylinux.org/"
+VENDOR_NAME="RESF"
+VENDOR_URL="https://resf.org/"
+BUG_REPORT_URL="https://bugs.rockylinux.org/"
+SUPPORT_END="2032-05-31"
+ROCKY_SUPPORT_PRODUCT="Rocky-Linux-9"
+ROCKY_SUPPORT_PRODUCT_VERSION="9.8"
+REDHAT_SUPPORT_PRODUCT="Rocky Linux"
+REDHAT_SUPPORT_PRODUCT_VERSION="9.8"
+
+===== uname -a =====
+Linux 192.168.16.252 5.14.0-687.10.1.el9_8.0.1.x86_64 #1 SMP PREEMPT_DYNAMIC Sun May 24 12:01:19 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+===== hostnamectl =====
+ Static hostname: 192.168.16.252
+       Icon name: computer-server
+         Chassis: server 🖳
+      Machine ID: 80f8838d7e6c4ff2b6ca703e92984be7
+         Boot ID: 6a23070652a6442fa2ad607ad0dc4ec9
+Operating System: Rocky Linux 9.8 (Blue Onyx)
+     CPE OS Name: cpe:/o:rocky:rocky:9::baseos
+          Kernel: Linux 5.14.0-687.10.1.el9_8.0.1.x86_64
+    Architecture: x86-64
+ Hardware Vendor: Dell Inc.
+  Hardware Model: PowerEdge R740xd
+Firmware Version: 2.6.4
+
+===== lscpu =====
+Architecture:                            x86_64
+CPU(s):                                  112
+Model name:                              Intel(R) Xeon(R) Platinum 8280 CPU @ 2.70GHz
+Thread(s) per core:                      2
+Core(s) per socket:                      28

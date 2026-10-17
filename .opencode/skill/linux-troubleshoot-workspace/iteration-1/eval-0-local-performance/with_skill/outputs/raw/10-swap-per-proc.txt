@@ -1,0 +1,28 @@
+=== 各进程 Swap 占用 Top15 (VmSwap) ===
+Swap=  5440.5 MB  RSS= 10060.8 MB  PID=238297   qemu-system-x86
+Swap=  2245.3 MB  RSS=  1560.4 MB  PID=58757    code
+Swap=  2104.4 MB  RSS=  3104.9 MB  PID=1811     qemu-system-x86
+Swap=  1531.8 MB  RSS=   826.7 MB  PID=81872    tabby
+Swap=   971.5 MB  RSS=   824.1 MB  PID=81891    tabby
+Swap=   742.4 MB  RSS=   364.9 MB  PID=1761     qemu-system-x86
+Swap=   252.2 MB  RSS=   371.9 MB  PID=74145    cinnamon
+Swap=   252.0 MB  RSS=  1034.6 MB  PID=715708   zen
+Swap=   195.5 MB  RSS=   448.9 MB  PID=720626   opencode
+Swap=   171.7 MB  RSS=   325.8 MB  PID=69893    opencode
+Swap=   103.9 MB  RSS=    19.2 MB  PID=59149    code
+Swap=   101.0 MB  RSS=   276.9 MB  PID=712244   code
+Swap=    94.9 MB  RSS=    83.9 MB  PID=714394   code
+Swap=    87.0 MB  RSS=    79.5 MB  PID=88586    obsidian
+Swap=    83.9 MB  RSS=   220.1 MB  PID=717897   msedge
+
+=== 汇总进程名 Swap 合计 Top10 ===
+8287.4 MB	qemu-system-x86
+3226.8 MB	code
+2593.2 MB	tabby
+426.0 MB	opencode
+362.3 MB	msedge
+263.0 MB	obsidian
+252.2 MB	cinnamon
+252.0 MB	zen
+242.1 MB	Isolated
+175.0 MB	chromium

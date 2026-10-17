@@ -1,0 +1,169 @@
+===== key services =====
+sshd             active
+crond            active
+docker           active
+firewalld        active
+
+===== systemctl list-unit-files (enabled) =====
+UNIT FILE                          STATE   PRESET
+auditd.service                     enabled enabled
+chronyd.service                    enabled enabled
+crond.service                      enabled enabled
+dbus-broker.service                enabled enabled
+docker.service                     enabled disabled
+firewalld.service                  enabled enabled
+getty@.service                     enabled enabled
+irqbalance.service                 enabled enabled
+iscsi-onboot.service               enabled enabled
+iscsi-starter.service              enabled disabled
+jenkins-agent.service              enabled disabled
+kdump.service                      enabled enabled
+libvirtd.service                   enabled disabled
+lvm2-monitor.service               enabled enabled
+microcode.service                  enabled enabled
+NetworkManager-dispatcher.service  enabled enabled
+NetworkManager-wait-online.service enabled disabled
+NetworkManager.service             enabled enabled
+nis-domainname.service             enabled enabled
+rpcbind.service                    enabled enabled
+rsyslog.service                    enabled enabled
+selinux-autorelabel-mark.service   enabled enabled
+sshd.service                       enabled enabled
+sssd.service                       enabled enabled
+systemd-boot-update.service        enabled enabled
+systemd-network-generator.service  enabled enabled
+systemd-pstore.service             enabled enabled
+virtqemud.service                  enabled enabled
+
+28 unit files listed.
+
+===== ss -tlnp =====
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      4096         0.0.0.0:8443       0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:111        0.0.0.0:*          
+LISTEN 0      128          0.0.0.0:22         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:8065       0.0.0.0:*          
+LISTEN 0      1            0.0.0.0:5906       0.0.0.0:*          
+LISTEN 0      1            0.0.0.0:5904       0.0.0.0:*          
+LISTEN 0      1            0.0.0.0:5905       0.0.0.0:*          
+LISTEN 0      1            0.0.0.0:5902       0.0.0.0:*          
+LISTEN 0      1            0.0.0.0:5903       0.0.0.0:*          
+LISTEN 0      1            0.0.0.0:5900       0.0.0.0:*          
+LISTEN 0      1            0.0.0.0:5901       0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:41780      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:41722      0.0.0.0:*          
+LISTEN 0      32     192.168.122.1:53         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60078      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60079      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60076      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60077      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60074      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60075      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60072      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60073      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60070      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:60071      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:63780      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53770      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53768      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53769      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53766      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53767      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53764      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53765      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53762      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53763      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53760      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53761      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53758      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53759      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53756      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53757      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53754      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53755      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53752      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53753      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53750      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53751      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53748      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53749      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53746      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53747      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53744      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53745      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53742      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53743      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53740      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53741      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53738      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53739      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53736      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53737      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53734      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53735      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53732      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53733      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53730      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53731      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:53722      0.0.0.0:*          
+LISTEN 0      4096               *:9110             *:*          
+LISTEN 0      4096            [::]:8443          [::]:*          
+LISTEN 0      4096            [::]:111           [::]:*          
+LISTEN 0      128             [::]:22            [::]:*          
+LISTEN 0      4096               *:8090             *:*          
+LISTEN 0      4096            [::]:8065          [::]:*          
+LISTEN 0      4096            [::]:41780         [::]:*          
+LISTEN 0      4096            [::]:41722         [::]:*          
+LISTEN 0      4096            [::]:60078         [::]:*          
+LISTEN 0      4096            [::]:60079         [::]:*          
+LISTEN 0      4096            [::]:60076         [::]:*          
+LISTEN 0      4096            [::]:60077         [::]:*          
+LISTEN 0      4096            [::]:60074         [::]:*          
+LISTEN 0      4096            [::]:60075         [::]:*          
+LISTEN 0      4096            [::]:60072         [::]:*          
+LISTEN 0      4096            [::]:60073         [::]:*          
+LISTEN 0      4096            [::]:60070         [::]:*          
+LISTEN 0      4096            [::]:60071         [::]:*          
+LISTEN 0      4096            [::]:63780         [::]:*          
+LISTEN 0      4096            [::]:53770         [::]:*          
+LISTEN 0      4096            [::]:53768         [::]:*          
+LISTEN 0      4096            [::]:53769         [::]:*          
+LISTEN 0      4096            [::]:53766         [::]:*          
+LISTEN 0      4096            [::]:53767         [::]:*          
+LISTEN 0      4096            [::]:53764         [::]:*          
+LISTEN 0      4096            [::]:53765         [::]:*          
+LISTEN 0      4096            [::]:53762         [::]:*          
+LISTEN 0      4096            [::]:53763         [::]:*          
+LISTEN 0      4096            [::]:53760         [::]:*          
+LISTEN 0      4096            [::]:53761         [::]:*          
+LISTEN 0      4096            [::]:53758         [::]:*          
+LISTEN 0      4096            [::]:53759         [::]:*          
+LISTEN 0      4096            [::]:53756         [::]:*          
+LISTEN 0      4096            [::]:53757         [::]:*          
+LISTEN 0      4096            [::]:53754         [::]:*          
+LISTEN 0      4096            [::]:53755         [::]:*          
+LISTEN 0      4096            [::]:53752         [::]:*          
+LISTEN 0      4096            [::]:53753         [::]:*          
+LISTEN 0      4096            [::]:53750         [::]:*          
+LISTEN 0      4096            [::]:53751         [::]:*          
+LISTEN 0      4096            [::]:53748         [::]:*          
+LISTEN 0      4096            [::]:53749         [::]:*          
+LISTEN 0      4096            [::]:53746         [::]:*          
+LISTEN 0      4096            [::]:53747         [::]:*          
+LISTEN 0      4096            [::]:53744         [::]:*          
+LISTEN 0      4096            [::]:53745         [::]:*          
+LISTEN 0      4096            [::]:53742         [::]:*          
+LISTEN 0      4096            [::]:53743         [::]:*          
+LISTEN 0      4096            [::]:53740         [::]:*          
+LISTEN 0      4096            [::]:53741         [::]:*          
+LISTEN 0      4096            [::]:53738         [::]:*          
+LISTEN 0      4096            [::]:53739         [::]:*          
+LISTEN 0      4096            [::]:53736         [::]:*          
+LISTEN 0      4096            [::]:53737         [::]:*          
+LISTEN 0      4096            [::]:53734         [::]:*          
+LISTEN 0      4096            [::]:53735         [::]:*          
+LISTEN 0      4096            [::]:53732         [::]:*          
+LISTEN 0      4096            [::]:53733         [::]:*          
+LISTEN 0      4096            [::]:53730         [::]:*          
+LISTEN 0      4096            [::]:53731         [::]:*          
+LISTEN 0      4096            [::]:53722         [::]:*          

@@ -1,0 +1,14 @@
+=== free -h ===
+               total        used        free      shared  buff/cache   available
+Mem:            31Gi        27Gi       318Mi       527Mi       4.5Gi       3.9Gi
+Swap:           15Gi        15Gi       5.0Mi
+
+=== /proc/meminfo (key) ===
+MemTotal:       32541084 kB
+MemFree:          326572 kB
+MemAvailable:    4086712 kB
+Cached:          2995956 kB
+SwapCached:        94456 kB
+SwapTotal:      15999996 kB
+SwapFree:           5124 kB
+Dirty:              5532 kB

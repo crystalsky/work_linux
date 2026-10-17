@@ -1,0 +1,19 @@
+===== which tools =====
+nslookup     NONE
+host         NONE
+dig          NONE
+resolvectl   NONE
+python3      /usr/bin/python3
+
+===== getent ahosts www.baidu.com (rc) =====
+rc=2
+
+===== getent hosts ntp-core1.cdvire.cn =====
+192.168.16.110  ntp-core1.cdvire.cn
+rc=0
+
+===== nslookup internal =====
+bash: line 1: nslookup: command not found
+
+===== nslookup baidu =====
+bash: line 1: nslookup: command not found

@@ -1,0 +1,30 @@
+=== du -xhd1 /data ===
+4.4T	/data
+3.0T	/data/kvm
+799G	/data/08_backup
+311G	/data/work_space
+206G	/data/02_kvm
+43G	/data/jenkins_home
+43G	/data/export-packages
+29G	/data/nfs_share
+27G	/data/export_package
+13G	/data/iso
+2.0G	/data/.pnpm-store
+546M	/data/03_services_data
+163M	/data/00_admin
+123M	/data/tools
+111M	/data/soft
+24K	/data/logs
+4.0K	/data/soft_data
+4.0K	/data/monitor
+0	/data/users
+0	/data/.root_datas
+
+=== docker root ===
+ Storage Driver: overlay2
+ Docker Root Dir: /var/lib/docker
+
+=== df again / and /data ===
+Filesystem            Size  Used Avail Use% Mounted on
+/dev/mapper/rlm-root  500G  138G  363G  28% /
+/dev/sda1              26T  6.3T   20T  25% /data

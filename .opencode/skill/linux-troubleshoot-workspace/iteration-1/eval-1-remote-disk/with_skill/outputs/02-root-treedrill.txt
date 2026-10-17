@@ -1,0 +1,35 @@
+=== du -xhd1 / ===
+7.2G	/
+2.6G	/usr
+2.1G	/workspace
+1.4G	/opt
+932M	/root
+299M	/var
+23M	/etc
+68K	/tmp
+0	/work_space
+0	/srv
+0	/mnt
+0	/media
+0	/data-ext
+0	/afs
+
+=== du -xhd1 /var ===
+299M	/var
+181M	/var/log
+79M	/var/cache
+39M	/var/lib
+20K	/var/tmp
+12K	/var/spool
+0	/var/yp
+0	/var/preserve
+0	/var/opt
+0	/var/nis
+0	/var/local
+0	/var/kerberos
+0	/var/games
+0	/var/ftp
+0	/var/empty
+
+=== journalctl disk-usage ===
+Archived and active journals take up 1.8G in the file system.

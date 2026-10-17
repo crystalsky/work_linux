@@ -1,0 +1,40 @@
+=== sudo du -xhd1 /data ===
+6.1T	/data
+3.0T	/data/kvm
+1.5T	/data/08_backup
+1011G	/data/.docker-data
+346G	/data/work_space
+206G	/data/02_kvm
+43G	/data/jenkins_home
+43G	/data/export-packages
+29G	/data/nfs_share
+27G	/data/export_package
+13G	/data/iso
+2.0G	/data/.pnpm-store
+853M	/data/03_services_data
+163M	/data/00_admin
+123M	/data/tools
+111M	/data/soft
+952K	/data/.root_datas
+24K	/data/logs
+4.0K	/data/soft_data
+4.0K	/data/monitor
+
+=== docker system df ===
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          88        13        101.8GB   98.58GB (96%)
+Containers      20        7         25.31GB   2.968GB (11%)
+Local Volumes   7         5         5.082GB   5.082GB (100%)
+Build Cache     2         0         991B      991B
+
+=== top overlay2 dirs ===
+122G	/var/lib/docker/overlay2
+21G	/var/lib/docker/overlay2/c5ef4f380538a4986e6a4bf06c0873844355c3e5efdfc8c55fb845c2d87db6fd
+6.4G	/var/lib/docker/overlay2/f951257adc60cf5018d7f7671b949f63ab3e20515fcffbe22bb583049e7745a1
+6.4G	/var/lib/docker/overlay2/bfb9a76d1b3adbd41118ebee69d4e4c4376b5fcdff644bae80279146012e7306
+5.5G	/var/lib/docker/overlay2/1816a5d923559269987cb3692c346aae6ebabf7ba88049cc08b083bb9b35e2f8
+1.8G	/var/lib/docker/overlay2/ae3cf65a05fff6f73173f728e1e9662260e021bed7df8f43b75fc1adea185dcd
+1.8G	/var/lib/docker/overlay2/5659306a4efaccd190507a92941e169df9a2b5d11c707d0398c214dfddf7c84a
+1.8G	/var/lib/docker/overlay2/472fb52c1c3d2ae500a5ba2a8706bbaa0c77a85a4bba64f898f4fd1a9bf1eba3
+1.8G	/var/lib/docker/overlay2/2ae4c367da6326b2d73efb6d39e44e01da6341c70511ba52bcc827218ad7f8de
+1.8G	/var/lib/docker/overlay2/110df69398bbb366f21e1f610719957f3dd4104698266814b28b7f5fa5e98478

@@ -1,0 +1,18 @@
+===== naughty_cannon inspect =====
+image=registry.cdvire.cn/vire_base/ubuntu1804_dev_env:latest-amd64 cmd=[bash /data/work_space/work_luli/work_vrem/model_service/.cicd_repos/temp_build_shell.sh] started=2026-10-08T09:53:16.122234519Z
+
+===== per-process swap top (sudo) =====
+pid=90943    swap=  1627344 KB  qemu-kvm
+pid=413021   swap=  1058108 KB  qemu-kvm
+pid=48241    swap=   428492 KB  qemu-kvm
+pid=35862    swap=   271000 KB  qemu-kvm
+pid=37681    swap=   238060 KB  qemu-kvm
+pid=1039872  swap=   237472 KB  qemu-kvm
+pid=791292   swap=   206000 KB  qemu-kvm
+pid=4019011  swap=     4048 KB  node
+pid=828472   swap=     3544 KB  opencode
+pid=3453607  swap=      328 KB  java
+
+===== total swap used =====
+SwapTotal:       4194300 kB
+SwapFree:              4 kB

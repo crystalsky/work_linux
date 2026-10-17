@@ -1,0 +1,19 @@
+===== ping gateway 192.168.16.1 =====
+--- 192.168.16.1 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1002ms
+rtt min/avg/max/mdev = 1.428/1.623/1.819/0.195 ms
+
+===== ping dns 192.168.16.253 =====
+--- 192.168.16.253 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1032ms
+rtt min/avg/max/mdev = 0.166/0.229/0.293/0.063 ms
+
+===== getent hosts (system resolver) =====
+
+===== dig @dns =====
+bash: line 1: dig: command not found
+dig unavailable
+
+===== dig @8.8.8.8 =====
+bash: line 1: dig: command not found
+dig unavailable

@@ -1,0 +1,6 @@
+{
+  "eval_id": 1,
+  "eval_name": "remote-disk",
+  "prompt": "帮我连上 SERVER_252 看看它的磁盘是不是快满了，如果满了帮我定位到具体是哪个目录/文件占的空间。",
+  "assertions": []
+}

@@ -1,0 +1,12 @@
+exported_images
+nohup.out
+wheelhouse/
+wheelhouse
+__pycache__/
+reports/
+sonar-deps/
+.opencode/skill/container-offline-deploy-workspace/
+软件部署/vaultwarden/
+# direnv 本地环境变量覆盖文件（.envrc 与 .env.default 入库，个人覆盖文件不入库）
+.env
+.env.local

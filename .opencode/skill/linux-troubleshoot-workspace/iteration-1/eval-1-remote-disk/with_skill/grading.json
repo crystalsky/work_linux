@@ -1,0 +1,35 @@
+{
+  "expectations": [
+    {
+      "text": "通过 ssh 别名 SERVER_252 连接（复用 ~/.ssh/config，未要求提供密码）",
+      "passed": true,
+      "evidence": "报告提及 SERVER_252 / 192.168.16.252"
+    },
+    {
+      "text": "结论正确：磁盘未写满，并给出各挂载点使用率",
+      "passed": true,
+      "evidence": "报告给出使用率百分比并说明未满"
+    },
+    {
+      "text": "定位到具体占用空间最大的目录/文件（如 docker overlay2、qcow2、备份）",
+      "passed": true,
+      "evidence": "报告定位到 docker/qcow2/backup 等具体占用"
+    },
+    {
+      "text": "清理类命令标注需用户确认，未自动执行",
+      "passed": true,
+      "evidence": "含 需确认/未执行 措辞"
+    },
+    {
+      "text": "生成含 YAML 文件头、分类到 os_storage 的可沉淀手册文件",
+      "passed": true,
+      "evidence": "手册文件=os_storage_rocky_prod_disk-troubleshoot-manual.md"
+    }
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 0,
+    "total": 5,
+    "pass_rate": 1.0
+  }
+}

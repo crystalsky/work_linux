@@ -1,0 +1,14 @@
+=== 内存总体占用近似 (RSS 合计 vs 物理内存) ===
+所有进程 RSS 合计: 33.7 GB
+
+=== 重量级应用簇 RSS 合计 ===
+qemu(VMs):   13.2 GB
+code(VSCode):6.0 GB
+tabby:       1.7 GB
+opencode:    3.5 GB
+浏览器:      4.3 GB
+
+=== 内存/Swap 用量 ===
+               total        used        free      shared  buff/cache   available
+Mem:            31Gi        27Gi       364Mi       491Mi       4.4Gi       3.9Gi
+Swap:           15Gi        15Gi          0B

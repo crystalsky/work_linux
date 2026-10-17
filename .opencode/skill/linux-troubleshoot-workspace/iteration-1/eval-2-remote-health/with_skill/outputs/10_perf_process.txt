@@ -1,0 +1,51 @@
+===== top -bn1 head =====
+top - 17:52:29 up 85 days,  1:25,  3 users,  load average: 23.13, 10.37, 7.66
+Tasks: 1360 total,   2 running, 1358 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  4.3 us,  0.9 sy,  0.0 ni, 89.5 id,  4.8 wa,  0.2 hi,  0.2 si,  0.0 st
+MiB Mem : 257022.4 total,   3794.3 free, 203626.4 used,  54167.4 buff/cache
+MiB Swap:   4096.0 total,      0.2 free,   4095.8 used.  53396.1 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  48241 qemu      20   0   38.9g  31.8g   6020 S 110.5  12.7  50645:26 qemu-kvm
+3017641 luli      20   0  772000 215024 213708 R  94.7   0.1   0:43.58 journal+
+ 791292 qemu      20   0   39.8g  31.8g   6156 S  84.2  12.7  67331:01 qemu-kvm
+  35862 qemu      20   0   14.4g   7.9g   5936 S  47.4   3.1  39133:50 qemu-kvm
+1358925 root      20   0  999380 122912  36524 S  42.1   0.0 670:46.94 node
+  90943 qemu      20   0   38.5g  30.5g   5984 S  26.3  12.1  80932:55 qemu-kvm
+ 413021 qemu      20   0   41.0g  31.2g   5764 S  26.3  12.4  93112:04 qemu-kvm
+3018856 luli      20   0  237468   8872   6016 R  15.8   0.0   0:00.06 top
+    817 root      20   0       0      0      0 S  10.5   0.0  65:30.50 kcompac+
+  50451 root      20   0 1574020 220236   9412 S  10.5   0.1  19881:15 cadvisor
+1039872 qemu      20   0   13.7g   7.8g   6092 S  10.5   3.1   7368:28 qemu-kvm
+   9379 root      20   0       0      0      0 D   5.3   0.0  13:50.04 xfsaild+
+  37681 qemu      20   0   39.0g  31.8g   6024 S   5.3  12.7 115446:13 qemu-kvm
+
+===== top CPU procs =====
+    PID USER     COMMAND         %CPU %MEM     ELAPSED
+ 791292 qemu     qemu-kvm         111 12.6 42-02:42:26
+  37681 qemu     qemu-kvm        97.6 12.6 82-03:13:20
+ 413021 qemu     qemu-kvm        88.1 12.4 73-08:18:33
+3017641 luli     journalctl      85.6  0.0       00:51
+  90943 qemu     qemu-kvm        71.7 12.1 78-06:43:05
+  48241 qemu     qemu-kvm        44.5 12.6 79-00:36:56
+  35862 qemu     qemu-kvm        32.7  3.1 83-02:17:12
+  50451 root     cadvisor        17.4  0.0 78-22:19:11
+1039872 qemu     qemu-kvm        12.2  3.1 41-21:57:17
+1037689 root     node             6.8  0.0  9-06:02:51
+
+===== top MEM procs =====
+    PID USER     COMMAND         %CPU %MEM   RSS
+ 791292 qemu     qemu-kvm         111 12.6 33366200
+  37681 qemu     qemu-kvm        97.6 12.6 33356056
+  48241 qemu     qemu-kvm        44.5 12.6 33330104
+ 413021 qemu     qemu-kvm        88.1 12.4 32678164
+  90943 qemu     qemu-kvm        71.7 12.1 31947376
+  35862 qemu     qemu-kvm        32.7  3.1 8234788
+1039872 qemu     qemu-kvm        12.2  3.1 8177392
+4019011 root     node             0.1  1.1 3029576
+1406179 root     opencode         2.5  0.2 717196
+2789059 root     opencode         2.1  0.2 638628
+
+===== OOM check =====
+
+===== dmesg oom =====

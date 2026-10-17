@@ -1,0 +1,85 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "provider": {
+        "vllm": {
+            "npm": "@ai-sdk/openai-compatible",
+            "options": {
+                "baseURL": "http://192.168.16.142:4000/",
+                "apiKey": "sk-sMbxjKm1FJOHrSic0_FSrA"
+            },
+            "models": {
+                "lul-deepseek": {
+                    "name": "lul-deepseek",
+                    "modalities": {
+                        "input": [
+                            "text",
+                            "image"
+                        ],
+                        "output": [
+                            "text"
+                        ]
+                    }
+                },
+                "lul-openai-deepseek-flash": {
+                    "name": "lul-openai-deepseek-flash",
+                    "modalities": {
+                        "input": [
+                            "text",
+                            "image"
+                        ],
+                        "output": [
+                            "text"
+                        ]
+                    }
+                },
+                "lul-qwen": {
+                    "name": "lul-qwen",
+                    "modalities": {
+                        "input": [
+                            "text",
+                            "image"
+                        ],
+                        "output": [
+                            "text"
+                        ]
+                    }
+                },
+                "lul-kimi": {
+                    "name": "lul-kimi",
+                    "modalities": {
+                        "input": [
+                            "text",
+                            "image"
+                        ],
+                        "output": [
+                            "text"
+                        ]
+                    }
+                },
+                "lul-glm": {
+                    "name": "lul-glm",
+                    "modalities": {
+                        "input": [
+                            "text",
+                            "image"
+                        ],
+                        "output": [
+                            "text"
+                        ]
+                    }
+                },
+                "lul-MiniMax": {
+                    "name": "lul-MiniMax",
+                    "modalities": {
+                        "input": [
+                            "text",
+                            "image"
+                        ],
+                        "output": [
+                            "text"
+                        ]
+                    }
+                }
+            }
+        }
+    }

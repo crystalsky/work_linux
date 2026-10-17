@@ -1,0 +1,2 @@
+=== iostat -x 1 3 ===
+iostat 不可用（需 sysstat）

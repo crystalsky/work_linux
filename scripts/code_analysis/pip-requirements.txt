@@ -1,0 +1,7 @@
+# 代码分析工具链 - Python 侧依赖（pip）
+# 用法: pip3 install -r pip-requirements.txt
+# 离线: python3 -m pip download -d wheelhouse -r pip-requirements.txt
+
+lizard
+gcovr
+semgrep

@@ -1,0 +1,18 @@
+# 代码分析工具链 - 容器编排
+# 用法（在 scripts/code_analysis 目录下）：
+#   PRODUCT_DIR=/path/to/product docker compose run --rm code-analysis
+# 说明：容器内已挂载产品源码到 /work，分析脚本在 PATH 中可直接调用。
+services:
+  code-analysis:
+    build:
+      context: .
+      args:
+        WITH_NICE: "false"
+    image: code-analysis:latest
+    working_dir: /work
+    volumes:
+      - ${PRODUCT_DIR:-.}:/work
+      - ./out:/out
+    stdin_open: true
+    tty: true
+    command: ["/bin/bash"]

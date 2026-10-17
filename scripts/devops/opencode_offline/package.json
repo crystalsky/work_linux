@@ -1,0 +1,9 @@
+{
+  "name": "opencode-plugin-offline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "opencode 外部插件依赖离线包（在外网机器执行 npm install 后打包带回内网）",
+  "dependencies": {
+    "@opencode-ai/plugin": "1.14.39"
+  }
+}

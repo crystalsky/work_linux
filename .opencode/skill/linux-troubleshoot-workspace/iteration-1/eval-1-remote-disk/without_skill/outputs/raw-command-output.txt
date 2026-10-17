@@ -1,0 +1,129 @@
+========================================================
+ SERVER_252 远程磁盘排查 - 原始命令与输出记录
+ 采集时间: 2026-10-08 17:50 ~ 17:56
+ 连接方式: ssh -o BatchMode=yes -o ConnectTimeout=5 SERVER_252
+ 目标主机: 192.168.16.252 (user=luli)  主机名: 192.168.16.252
+========================================================
+
+[1] 连通性测试
+$ ssh ... 'echo OK; hostname; whoami; uptime'
+OK
+192.168.16.252
+luli
+ 17:50:16 up 85 days,  1:23,  3 users,  load average: 7.02, 6.14, 6.26
+
+[2] 文件系统使用率 (df -hT)
+$ ssh ... 'df -hT'
+Filesystem           Type      Size  Used Avail Use% Mounted on
+devtmpfs             devtmpfs  126G     0  126G   0% /dev
+tmpfs                tmpfs     126G     0  126G   0% /dev/shm
+tmpfs                tmpfs      51G  1.9G   49G   4% /run
+/dev/mapper/rlm-root xfs       500G  138G  363G  28% /
+/dev/sdb1            xfs       960M  398M  563M  42% /boot
+tmpfs                tmpfs      26G     0   26G   0% /run/user/0
+/dev/mapper/rlm-home xfs       300G  2.6G  298G   1% /home
+/dev/sda1            xfs        26T  6.3T   20T  25% /data
+overlay              overlay   500G  138G  363G  28% /var/lib/docker/overlay2/.../merged
+(以上 overlay 均为 docker 覆盖挂载，与 / 同源)
+
+[3] inode 使用率 (df -ih)
+$ ssh ... 'df -ih'
+Filesystem           Inodes IUsed IFree IUse% Mounted on
+/dev/mapper/rlm-root   250M  1.5M  249M    1% /
+/dev/sdb1              512K   369  512K    1% /boot
+/dev/mapper/rlm-home   150M    40  150M    1% /home
+/dev/sda1              2.6G   11M  2.6G    1% /data
+(各文件系统 inode 使用率均 1%，无 inode 耗尽)
+
+[4] 真正的块设备使用率 (排除 tmpfs/overlay)
+$ ssh ... 'df -hT -x tmpfs -x devtmpfs -x overlay'
+Filesystem           Type  Size  Used Avail Use% Mounted on
+/dev/mapper/rlm-root xfs   500G  138G  363G  28% /
+/dev/sdb1            xfs   960M  398M  563M  42% /boot
+/dev/mapper/rlm-home xfs   300G  2.6G  298G   1% /home
+/dev/sda1            xfs    26T  6.3T   20T  25% /data
+
+[5] / 根目录一级目录占用 (sudo du -x)
+$ ssh ... 'sudo -n du -x -h --max-depth=1 / | sort -rh'
+135G    /
+128G    /var
+2.6G    /usr
+2.1G    /workspace
+1.4G    /opt
+960M    /root
+24M     /etc
+68K     /tmp
+
+[6] /var 与 /var/lib 下钻
+$ ssh ... 'sudo -n du -x -h --max-depth=1 /var | sort -rh'
+128G    /var
+127G    /var/lib
+220M    /var/log
+79M     /var/cache
+
+$ ssh ... 'sudo -n du -x -h --max-depth=1 /var/lib | sort -rh'
+127G    /var/lib/docker
+127G    /var/lib
+35M     /var/lib/rpm
+18M     /var/lib/selinux
+4.3M    /var/lib/dnf
+
+[7] / 上最大的单个文件 (find -xdev -size +2G)
+$ ssh ... 'sudo -n find / -xdev -type f -size +2G -printf "%s\t%p\n" | sort -rn'
+6186664719  /var/lib/docker/overlay2/c5ef4f380538a4986e6a4bf06c0873844355c3e5efdfc8c55fb845c2d87db6fd/diff/opt/maven-3.6.3/maven.zip
+6155899716  /var/lib/docker/overlay2/c5ef4f380538a4986e6a4bf06c0873844355c3e5efdfc8c55fb845c2d87db6fd/diff/opt/maven-3.6.3/repository-dasim-cloud-1.0.tar.gz
+
+[8] /data 一级目录占用 (sudo du -x)
+$ ssh ... 'sudo -n du -x -h --max-depth=1 /data | sort -rh'
+4.4T    /data
+3.0T    /data/kvm
+799G    /data/08_backup
+311G    /data/work_space
+206G    /data/02_kvm
+43G     /data/jenkins_home
+43G     /data/export-packages
+29G     /data/nfs_share
+27G     /data/export_package
+13G     /data/iso
+2.0G    /data/.pnpm-store
+
+[9] /data/08_backup 下钻 (sudo du，注意此处跨入子挂载，实际用 -x 为 799G)
+$ ssh ... 'sudo -n du -h --max-depth=1 /data/08_backup | sort -rh'
+1.5T    /data/08_backup
+703G    /data/08_backup/253_gitlab_data
+598G    /data/08_backup/253_zentao_data
+171G    /data/08_backup/253_kvm_data
+17G     /data/08_backup/253_jenkins_data
+13G     /data/08_backup/253_pypi_data
+1.3G    /data/08_backup/100_jumpserver_data
+465M    /data/08_backup/110_docmost_data
+
+[10] KVM 镜像目录明细 (/data/kvm)
+$ ssh ... 'ls -lah /data/kvm'
+total 3.0T
+-rw-------. 1 qemu qemu 1001G harbor-backup-133-data.qcow2
+-rw-------. 1 qemu qemu  101G harbor-backup-133-root.qcow2
+-rw-------. 1 qemu qemu 1001G jenkins-agent-144-data.qcow2
+-rw-------. 1 qemu qemu  201G jenkins-agent-144-root.qcow2
+-rw-------. 1 qemu qemu  201G k8s-worker3-196-data.qcow2
+-rw-------. 1 qemu qemu  201G k8s-worker3-196-root.qcow2
+-rw-------. 1 qemu qemu  501G kylinSP1-desktop-test-122-data.qcow2
+-rw-------. 1 qemu qemu  301G kylinSP1-desktop-test-122-root.qcow2
+-rw-------. 1 qemu qemu  101G llm-gateway-142-data.qcow2
+-rw-------. 1 qemu qemu  201G llm-gateway-142-root.qcow2
+-rw-------. 1 qemu qemu  301G rocky9-vm-data-140.qcow2
+-rw-------. 1 qemu qemu  601G rocky9-vm-data-141.qcow2
+-rw-------. 1 qemu qemu  201G rocky9-vm-root-140.qcow2
+-rw-------. 1 qemu qemu  201G rocky9-vm-root-141.qcow2
+
+[11] 已删除但仍被进程占用的文件检查 (lsof +L1)
+$ ssh ... 'sudo -n lsof -nP +L1'
+(无大于 1G 的 deleted-but-open 文件)
+
+[12] /data 嵌套挂载检查 (findmnt -R /data)
+$ ssh ... 'findmnt -R /data'
+TARGET SOURCE    FSTYPE OPTIONS
+/data  /dev/sda1 xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
+(无嵌套子挂载)
+
+结论: 所有块设备文件系统使用率均远低于告警阈值，磁盘并未满载。

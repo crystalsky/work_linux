@@ -1,0 +1,16 @@
+=== tabby(81891) 两次采样 %CPU ===
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  81891 vire      20   0 1224.7g 843900  98072 S 654.5   2.6    20w+0d tabby
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  81891 vire      20   0 1224.7g 843900  98072 S 720.0   2.6    20w+0d tabby
+
+=== tabby(81891) 线程数/状态 ===
+线程数: 53
+    PID STAT NLWP %CPU %MEM COMMAND
+  81891 SLl    53  666  2.5 tabby
+
+=== tabby 各线程 CPU Top8 ===
+    TID STAT %CPU COMMAND
+  81891 SLl   666 tabby

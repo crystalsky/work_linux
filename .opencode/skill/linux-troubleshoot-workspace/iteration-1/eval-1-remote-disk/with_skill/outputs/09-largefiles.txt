@@ -1,0 +1,33 @@
+=== large files >10G on / (xdev) ===
+
+=== large files >20G on /data ===
+1073905926144	/data/kvm/jenkins-agent-144-data.qcow2
+1073905926144	/data/kvm/harbor-backup-133-data.qcow2
+644343660544	/data/kvm/rocky9-vm-data-141.qcow2
+536953094144	/data/kvm/kylinSP1-desktop-test-122-data.qcow2
+322171961344	/data/kvm/rocky9-vm-data-140.qcow2
+322171961344	/data/kvm/kylinSP1-desktop-test-122-root.qcow2
+220619210752	/data/02_kvm/images/ubuntu-20.04-vrnet-test.qcow2
+214781394944	/data/kvm/rocky9-vm-root-141.qcow2
+214781394944	/data/kvm/rocky9-vm-root-140.qcow2
+214781394944	/data/kvm/llm-gateway-142-root.qcow2
+214781394944	/data/kvm/k8s-worker3-196-root.qcow2
+214781394944	/data/kvm/k8s-worker3-196-data.qcow2
+214781394944	/data/kvm/jenkins-agent-144-root.qcow2
+182881157120	/data/08_backup/253_kvm_data/test-data/ubuntu-20.04-vrnet-prod.qcow2
+159397652480	/data/08_backup/253_gitlab_data/gitlab_backups/1791054032_2026_10_03_17.9.7_gitlab_backup.tar
+
+=== du -xhd1 /data/kvm ===
+3.0T	/data/kvm
+
+=== du -xhd1 /data/08_backup ===
+1.5T	/data/08_backup
+703G	/data/08_backup/253_gitlab_data
+598G	/data/08_backup/253_zentao_data
+171G	/data/08_backup/253_kvm_data
+17G	/data/08_backup/253_jenkins_data
+13G	/data/08_backup/253_pypi_data
+1.3G	/data/08_backup/100_jumpserver_data
+465M	/data/08_backup/110_docmost_data
+8.0M	/data/08_backup/253_ldap_data
+7.0M	/data/08_backup/247_keycloak_data

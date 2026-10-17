@@ -1,0 +1,29 @@
+===== docker ps =====
+CONTAINER ID   IMAGE                                                                  STATUS                    NAMES
+112c3f3e6326   registry.cdvire.cn/vire_base/ubuntu1804_dev_env:latest-amd64           Up 9 days                 luli-dev_gcc7-1
+fdf7f4702b6d   90b1f9169cee                                                           Up 2 weeks                gcc7_only_x86_64-dev_gcc7-1
+8e8a4e6f3e4d   registry.cdvire.cn/library/mattermost/mattermost-team-edition:latest   Up 6 weeks (healthy)      mattermost
+9311b05e90f4   registry.cdvire.cn/library/postgres:15-alpine                          Up 6 weeks                mattermost-postgres
+83bfe0787710   registry.cdvire.cn/monitoring/node-exporter:v1.11.1                    Up 2 months               node-exporter
+268b714bffb8   registry.cdvire.cn/monitoring/cadvisor:v0.52.0                         Up 2 months (unhealthy)   cadvisor
+
+===== docker ps count =====
+6
+
+===== firewalld state =====
+Authorization failed.
+    Make sure polkit agent is running or run the application as superuser.
+docker
+  interfaces: docker0 br-a29687ece65d br-710312d89e10 br-f1da935f75ee br-897bae931726 br-464fab94c27f br-3d4764545ef7 br-b3f80e0f9bec br-5bcb816b2895 br-bbeab201091e br-244491a6aa96 br-0ffd2be566c8 br-c5a14ac2730d br-41ea880bf835 br-32c5fe635c07 br-9c828b42b06d br-e57816109f50 br-c6537518b22d br-15ecc6f33c2f
+libvirt
+  interfaces: virbr0
+public
+  interfaces: eno1 br0
+
+===== dmesg errors (7d) =====
+-- No entries --
+
+===== virt VMs =====
+ Id   Name   State
+--------------------
+

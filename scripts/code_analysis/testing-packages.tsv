@@ -1,0 +1,63 @@
+# 三栈自动化测试包清单（TSV: ecosystem<TAB>name<TAB>version<TAB>purpose<TAB>priority<TAB>offline_method）
+# 目标约束: Python 3.11 / JDK 8-25 / glibc<=2.27 / Node 18|20(glibc-217)
+# 详见: docs/devops_code_analysis/20261009-nodejs-java-cpp-testing-toolchain-package-list.md
+
+python	python3.11	3.11.x	运行时/覆盖率脚本	must	已有镜像/apt-deadsnakes
+python	venv	-	隔离环境	must	随python
+python	pytest	8.x	Python 单测(可选)	nice	pip-manylinux2014
+python	coverage	7.x	Python 覆盖率(可选)	nice	pip-manylinux2014
+python	gcovr	8.x	C++覆盖率(CI友好)	must	pip-manylinux2014
+python	lizard	-	复杂度度量	nice	pip-manylinux2014
+
+base	gcc/g++/make	build-essential	编译	C++	must	apt-deb
+base	cmake	3.22+	C++构建	must	official-tar/apt-deb
+base	ninja-build	1.8+	构建后端	nice	apt-deb
+base	pkg-config	-	依赖查找	must	apt-deb
+base	git	2.17+	取码	must	apt-deb
+
+cpp	google-test	1.14	C++单测	must	vendor-source/apt-deb
+cpp	google-mock	1.14	C++Mock	must	vendor-source/apt-deb
+cpp	google-benchmark	1.8	性能基准	nice	vendor-source/apt-deb
+cpp	lcov	1.14/2.x	覆盖率采集/HTML	must	apt-deb/official-tar
+cpp	cppcheck	2.x	静态检查	must	apt-deb/source
+cpp	clang/clang-tidy	10-14	C++静态检查	nice	apt-deb
+cpp	gdb	8+	调试	must	apt-deb
+cpp	valgrind	3.13+	内存/调用分析	nice	apt-deb
+cpp	perf/linux-tools	匹配内核	业务链追踪	nice	apt-deb
+cpp	doxygen/graphviz	-	接口文档/调用图	nice	apt-deb
+cpp	catch2/doctest	-	轻量框架(备选)	nice	vendor-header
+cpp	mull	-	变异测试(可选)	optional	source-build
+
+java	temurin-jdk	8/11/17/21/25	运行/编译	must	adoptium-tar
+java	maven	3.8.8/3.9.x	构建/测试	must	official-tar
+java	gradle	7.6/8.x	构建(备选)	nice	official-tar
+java	junit5	5.10	单测	must	maven-local/Nexus
+java	mockito	5.x	Mock	must	maven-local/Nexus
+java	assertj	3.x	断言	nice	maven-local/Nexus
+java	spring-boot-test	与spring一致	Spring集成	must	maven-local/Nexus
+java	rest-assured	5.x	接口测试	nice	maven-local/Nexus
+java	wiremock	3.x	HTTP Mock	nice	maven-local/Nexus
+java	testcontainers	1.19+	容器化集成	nice	maven+docker-image
+java	jacoco	0.8.11	覆盖率	must	maven-plugin-jar/Nexus
+java	pitest	1.15	变异测试	optional	maven-local/Nexus
+java	checkstyle/spotbugs/pmd	最新	质量	nice	maven-local/Nexus
+java	surefire/failsafe	匹配maven	跑单测/集成	must	maven-local/Nexus
+
+node	nodejs	18.20.5/20.18.1	运行时	must	glibc-217-tar
+node	npm	随node	包管理	must	随node
+node	pnpm	9.x	包管理(备选)	nice	corepack/npm-pack
+node	jest	29.x	单测	must	npm-pack/node_modules
+node	vitest	2.x	单测(备选)	nice	npm-pack/node_modules
+node	mocha/chai/sinon	10/5/17	灵活组合	nice	npm-pack/node_modules
+node	c8/nyc	9.x/15.x	覆盖率	must	npm-pack/node_modules
+node	supertest	6.x	HTTP接口	must	npm-pack/node_modules
+node	@nestjs/testing	与nest一致	Nest测试	nice	npm-pack/node_modules
+node	eslint/prettier/typescript	8.x/3.x/5.x	质量/类型	must	npm-pack/node_modules
+node	@puppeteer/playwright	1.4x	E2E	nice	npm+browser-cache
+node	cypress	13.x	E2E(备选)	optional	npm+binary-cache
+
+integration	code-review-graph	2.3.9	接口/调用图/MCP	must	已离线(pip-wheel)
+integration	understand-anything	v2.9.0	业务域/知识图谱	nice	已离线(repo+viewer)
+integration	sonarqube-scanner	最新	质量门禁	nice	jar/docker-image
+integration	harbor(registry.cdvire.cn)	已有	镜像仓库	must	已具备
+integration	nexus(可选)	-	Maven/npm私服	nice	docker-image

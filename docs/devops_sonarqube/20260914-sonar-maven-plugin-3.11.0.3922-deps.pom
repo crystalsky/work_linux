@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>local.offline</groupId>
+  <artifactId>sonar-maven-plugin-deps</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <description>SonarScanner for Maven 3.11.0.3922 离线依赖下载清单（在外网机器批量拉取后上传内网 Nexus）</description>
+
+  <properties>
+    <sonar.maven.plugin.version>3.11.0.3922</sonar.maven.plugin.version>
+    <sonar.scanner.api.version>2.16.3.1081</sonar.scanner.api.version>
+  </properties>
+
+  <dependencies>
+    <!-- 插件本体（其依赖清单中声明的真实 API 版本为 2.16.3.1081） -->
+    <dependency>
+      <groupId>org.sonarsource.scanner.maven</groupId>
+      <artifactId>sonar-maven-plugin</artifactId>
+      <version>${sonar.maven.plugin.version}</version>
+    </dependency>
+    <!-- 扫描客户端 API（shaded 含 batch 接口；版本以插件 pom 依赖为准）。
+         注：中央仓库不存在 sonar-scanner-engine-shaded 构件，扫描引擎由客户端在运行期
+         从 SonarQube 服务端获取，无需上传 Nexus。 -->
+    <dependency>
+      <groupId>org.sonarsource.scanner.api</groupId>
+      <artifactId>sonar-scanner-api</artifactId>
+      <version>${sonar.scanner.api.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.6.1</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

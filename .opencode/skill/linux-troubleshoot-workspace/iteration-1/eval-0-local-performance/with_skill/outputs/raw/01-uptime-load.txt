@@ -1,0 +1,8 @@
+=== uptime ===
+ 17:50:35 up 22 days, 21:45,  1 user,  load average: 8.95, 8.85, 8.61
+
+=== cat /proc/loadavg ===
+8.95 8.85 8.61 10/3067 1745622
+
+=== nproc ===
+20

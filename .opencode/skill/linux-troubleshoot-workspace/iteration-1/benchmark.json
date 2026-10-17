@@ -1,0 +1,343 @@
+{
+  "metadata": {
+    "skill_name": "linux-troubleshoot",
+    "skill_path": "/mnt/sdd-data/workspace/work_linux/.opencode/skill/linux-troubleshoot",
+    "executor_model": "huangza-openai-deepseek-flash",
+    "analyzer_model": "huangza-openai-deepseek-flash",
+    "timestamp": "2026-10-08T09:58:51Z",
+    "evals_run": [
+      0,
+      1,
+      2
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "eval_name": "local-performance",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "报告将卡顿主因定位为内存/Swap 耗尽，而非 CPU 或磁盘 IO",
+          "passed": true,
+          "evidence": "含 swap 且提及耗尽/100%（files=17）"
+        },
+        {
+          "text": "明确给出磁盘 IO 是否异常的判读（排除或确认）",
+          "passed": true,
+          "evidence": "文本含 iostat/iowait/wa=/D 状态等 IO 判读依据"
+        },
+        {
+          "text": "所有建议的修复/清理命令均标注需用户确认，未自动执行任何变更",
+          "passed": true,
+          "evidence": "含 需确认/未执行 等安全边界措辞"
+        },
+        {
+          "text": "在工作目录留下了诊断产出报告文件",
+          "passed": true,
+          "evidence": "存在 markdown 报告文件"
+        },
+        {
+          "text": "生成了符合规范（含 title/keywords 等 YAML 文件头）的可沉淀运维手册文件",
+          "passed": true,
+          "evidence": "手册文件=20261008-linux-dev-machine-slowness-swap-exhaustion.md"
+        },
+        {
+          "text": "原始诊断输出按检查项分别存档为独立文件",
+          "passed": true,
+          "evidence": ".txt 文件数=15"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "eval_name": "local-performance",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.83,
+        "passed": 5,
+        "failed": 1,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "报告将卡顿主因定位为内存/Swap 耗尽，而非 CPU 或磁盘 IO",
+          "passed": true,
+          "evidence": "含 swap 且提及耗尽/100%（files=2）"
+        },
+        {
+          "text": "明确给出磁盘 IO 是否异常的判读（排除或确认）",
+          "passed": true,
+          "evidence": "文本含 iostat/iowait/wa=/D 状态等 IO 判读依据"
+        },
+        {
+          "text": "所有建议的修复/清理命令均标注需用户确认，未自动执行任何变更",
+          "passed": true,
+          "evidence": "含 需确认/未执行 等安全边界措辞"
+        },
+        {
+          "text": "在工作目录留下了诊断产出报告文件",
+          "passed": true,
+          "evidence": "存在 markdown 报告文件"
+        },
+        {
+          "text": "生成了符合规范（含 title/keywords 等 YAML 文件头）的可沉淀运维手册文件",
+          "passed": true,
+          "evidence": "手册文件=diagnosis-report.md"
+        },
+        {
+          "text": "原始诊断输出按检查项分别存档为独立文件",
+          "passed": false,
+          "evidence": ".txt 文件数=0"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "remote-disk",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "通过 ssh 别名 SERVER_252 连接（复用 ~/.ssh/config，未要求提供密码）",
+          "passed": true,
+          "evidence": "报告提及 SERVER_252 / 192.168.16.252"
+        },
+        {
+          "text": "结论正确：磁盘未写满，并给出各挂载点使用率",
+          "passed": true,
+          "evidence": "报告给出使用率百分比并说明未满"
+        },
+        {
+          "text": "定位到具体占用空间最大的目录/文件（如 docker overlay2、qcow2、备份）",
+          "passed": true,
+          "evidence": "报告定位到 docker/qcow2/backup 等具体占用"
+        },
+        {
+          "text": "清理类命令标注需用户确认，未自动执行",
+          "passed": true,
+          "evidence": "含 需确认/未执行 措辞"
+        },
+        {
+          "text": "生成含 YAML 文件头、分类到 os_storage 的可沉淀手册文件",
+          "passed": true,
+          "evidence": "手册文件=os_storage_rocky_prod_disk-troubleshoot-manual.md"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "remote-disk",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "通过 ssh 别名 SERVER_252 连接（复用 ~/.ssh/config，未要求提供密码）",
+          "passed": true,
+          "evidence": "报告提及 SERVER_252 / 192.168.16.252"
+        },
+        {
+          "text": "结论正确：磁盘未写满，并给出各挂载点使用率",
+          "passed": true,
+          "evidence": "报告给出使用率百分比并说明未满"
+        },
+        {
+          "text": "定位到具体占用空间最大的目录/文件（如 docker overlay2、qcow2、备份）",
+          "passed": true,
+          "evidence": "报告定位到 docker/qcow2/backup 等具体占用"
+        },
+        {
+          "text": "清理类命令标注需用户确认，未自动执行",
+          "passed": true,
+          "evidence": "含 需确认/未执行 措辞"
+        },
+        {
+          "text": "生成含 YAML 文件头、分类到 os_storage 的可沉淀手册文件",
+          "passed": true,
+          "evidence": "手册文件=disk-diagnosis-report.md"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "remote-health",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "巡检覆盖系统身份、资源(CPU/内存/磁盘)、服务、网络等多个维度",
+          "passed": true,
+          "evidence": "覆盖系统身份/服务/网络等维度"
+        },
+        {
+          "text": "将 Swap 100% 耗尽识别为异常项",
+          "passed": true,
+          "evidence": "报告标注 swap 耗尽"
+        },
+        {
+          "text": "识别 cadvisor unhealthy 异常",
+          "passed": true,
+          "evidence": "报告提及 cadvisor"
+        },
+        {
+          "text": "输出结构化体检报告并存档",
+          "passed": true,
+          "evidence": "存在 markdown 体检报告"
+        },
+        {
+          "text": "生成含 YAML 文件头的可沉淀巡检手册文件",
+          "passed": true,
+          "evidence": "手册文件=20261008-rocky9-virtualization-host-health-check-manual.md"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "remote-health",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.6,
+        "passed": 3,
+        "failed": 2,
+        "total": 5,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "巡检覆盖系统身份、资源(CPU/内存/磁盘)、服务、网络等多个维度",
+          "passed": false,
+          "evidence": "覆盖系统身份/服务/网络等维度"
+        },
+        {
+          "text": "将 Swap 100% 耗尽识别为异常项",
+          "passed": true,
+          "evidence": "报告标注 swap 耗尽"
+        },
+        {
+          "text": "识别 cadvisor unhealthy 异常",
+          "passed": true,
+          "evidence": "报告提及 cadvisor"
+        },
+        {
+          "text": "输出结构化体检报告并存档",
+          "passed": true,
+          "evidence": "存在 markdown 体检报告"
+        },
+        {
+          "text": "生成含 YAML 文件头的可沉淀巡检手册文件",
+          "passed": false,
+          "evidence": "手册文件=None"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "tokens": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.81,
+        "stddev": 0.2007,
+        "min": 0.6,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "tokens": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.19",
+      "time_seconds": "+0.0",
+      "tokens": "+0"
+    }
+  },
+  "notes": [
+    "eval-1 的断言在两种配置下均全部通过，区分度低：baseline 也能完成常规磁盘排查，需补充 skill 特有行为的断言（如是否按作用域沉淀手册、是否分离原始输出）。",
+    "with_skill 的显著优势在于：自动沉淀符合规范的手册文件、原始输出按检查项分文件归档。",
+    "eval-2 baseline 未识别 Swap 耗尽的多维度体检，with_skill 覆盖更全。"
+  ]
+}

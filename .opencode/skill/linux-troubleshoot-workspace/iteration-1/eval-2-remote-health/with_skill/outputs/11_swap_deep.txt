@@ -1,0 +1,25 @@
+===== free -m =====
+               total        used        free      shared  buff/cache   available
+Mem:          257022      203623        3761        1866       54215       53399
+Swap:           4095        4095           0
+
+===== swap per top procs (smaps) =====
+(如为空可能权限不足)
+
+===== /proc/meminfo swap =====
+SwapCached:       128788 kB
+Active:         165086044 kB
+Inactive:       64346356 kB
+Active(anon):   164033628 kB
+Inactive(anon): 30232872 kB
+Active(file):    1052416 kB
+Inactive(file): 34113484 kB
+SwapTotal:       4194300 kB
+SwapFree:            224 kB
+Slab:           21680604 kB
+SReclaimable:   18439108 kB
+
+===== loadavg samples =====
+18.08 10.37 7.75 6/3593 3032705
+18.08 10.37 7.75 9/3593 3032737
+17.35 10.34 7.75 5/3595 3032771

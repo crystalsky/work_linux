@@ -1,0 +1,22 @@
+# Caddy 反代模板：为需要 HTTPS 的服务终结 TLS（完全离线，tls internal 自动生成本地 CA）
+# 用法:
+#   1) 拷贝为 bundle 的 ./Caddyfile
+#   2) 把 <app-service> 换成 compose 里的应用服务名（Caddy 通过服务名 DNS 访问它）
+#   3) 站点地址保留 {$DOMAIN}, localhost（前者供内网域名，后者便于本机自测）
+#   4) 应用服务只 expose 80，不发布宿主机端口；Caddy 发布 ${HTTP_PORT}:80 / ${HTTPS_PORT}:443
+#   5) 客户端需导入 Caddy 根证书:
+#      docker cp <caddy容器>:/data/caddy/pki/authorities/local/root.crt ./rootCA.crt
+
+{$DOMAIN}, localhost {
+	tls internal
+	encode gzip
+
+	reverse_proxy <app-service>:80 {
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

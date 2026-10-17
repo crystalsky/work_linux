@@ -1,0 +1,259 @@
+
+Host jump_server
+  User luli
+  HostName jumpserver.cdvire.cn
+  ForwardAgent yes
+  port 2222
+  ServerAliveInterval 60
+  IdentityFile ~/.ssh/id_rsa
+
+Host SERVER_252
+  HostName 192.168.16.252
+  User luli
+
+Host SERVER_253
+  HostName 192.168.16.253
+  User luli
+  Port 2722
+
+Host SERVER_247
+  HostName 192.168.16.247
+  User vire
+  
+Host TT_TEMP_C86_240
+  HostName 192.168.16.240
+  User root
+
+Host TT_TEMP_KUNPENG920_241
+  HostName 192.168.16.241
+  User vire
+
+Host TT_TEMP_D2000_242
+  HostName 192.168.16.242
+  User user
+
+Host SERVER_KVM_VRNET_DEMO_130
+  HostName 192.168.16.130
+  User vire
+  Port 22
+
+Host SERVER_160_KVM_DEV
+  HostName 192.168.16.160
+  User vire
+  Port 22
+
+Host SERVER_KVM_VRNET_SHARE_DATA
+  HostName 192.168.16.120
+  User vire
+  Port 22
+
+Host SERVER_KVM_DEV_SERVICES1
+  HostName 192.168.16.100
+  User vire
+  Port 22
+
+Host SENSANFU_UBUNTU_11_10
+  HostName 192.168.11.10
+  User vire
+  Port 22
+
+Host SERVER_KVM_VRNET_DEV
+  HostName 192.168.16.123
+  User vire
+  Port 22
+
+Host SERVER_KVM_VRNET_TEST
+  HostName 192.168.16.122
+  User vire
+  Port 22
+
+Host SERVER_KVM_VRNET_PROD
+  HostName 192.168.16.121
+  User vire
+  Port 22
+
+Host SERVER_KVM_VRNET_DEMO
+  HostName 192.168.16.120
+  User vire
+  Port 22
+
+Host SERVER_KVM_JENKINS_90
+  HostName 192.168.16.90
+  User vire
+
+Host SERVER_GITLAB_110
+  HostName 192.168.16.110
+  User vire
+  Port 3222
+  IdentityFile C:/Users/vire/.ssh/id_rsa_new_0303
+
+Host k8s-master1
+  HostName 192.168.16.12
+  User vire
+  Port 22
+
+Host working-220
+  HostName 192.168.12.220
+  User vire
+  Port 22
+
+Host ubuntu_desktop_56
+  HostName 192.168.12.56
+  User vire
+  Port 22
+
+Host VMESXi-192.168.1.125
+  HostName 192.168.1.125
+  User vire
+  Port 22
+
+Host VMESXi-MyTestUbuntu
+  HostName 192.168.0.165
+  User vire
+  Port 22
+
+Host vm_vrnet_data_prod_demo
+  HostName 192.168.12.60
+  User vire
+  Port 22
+
+Host vm_vrlink_dev
+  HostName 192.168.12.135
+  User vire
+  Port 22
+
+Host vm_vrnet_dev2[M-19][66]
+  HostName 192.168.12.66
+  User vire
+  Port 22
+
+# OP Use VMESXi-Server
+Host VMESXi-192.168.0.162
+  HostName 192.168.0.162
+  User vire
+
+Host VMESXi-bookstack
+  HostName 192.168.0.149
+  User vire
+  Port 22
+
+Host VMESXi-Email
+  HostName 192.168.0.123
+  User vire
+  Port 22
+
+Host VMESXi-WordPress
+  HostName 192.168.0.134
+  User vire
+  Port 22
+
+Host VMWare_1804_Test
+  HostName 192.168.18.131
+  User vire
+  Port 22
+
+Host VMWare_Rocky_docker
+  HostName 192.168.12.57
+  User vire
+  Port 22
+
+Host VMWare_Rocky9-I
+  HostName 192.168.12.65
+  User vire
+  Port 22
+  
+Host VMWare_Rocky_docker58
+  HostName 192.168.12.58
+  User vire
+  Port 22
+
+Host vde-18
+  HostName 192.168.11.129
+  User vire
+  Port 22
+
+Host Server_252[229]
+  HostName 192.168.16.252
+  User luli
+  Port 22
+
+Host VM_22[XA]
+  HostName 192.168.22.2
+  User vire
+  Port 22
+
+Host Server-AI[254]
+  HostName 192.168.16.254
+  User root
+  Port 222
+
+Host Ubuntu_x86[192.168.1.229]-[luli-gcc7-vscode]
+  HostName 192.168.1.229
+  User root
+  Port 20722
+
+Host Ubuntu_x86[192.168.1.229]-vde-zhoujin
+  HostName 192.168.1.229
+  User vire
+  Port 21212
+
+Host Ubuntu_x86[HignSpeed]-luli
+  HostName 192.168.1.229
+  User luli
+  Port 22
+
+Host Ubuntu_x86[HignSpeed]-gcc5-docker
+  HostName 192.168.1.229
+  User root
+  Port 2210
+
+Host FT2000-ARM64-35
+  HostName 192.168.12.35
+  User vire
+
+Host FT2000-ARM64-36
+  HostName 192.168.12.36
+  User vire
+
+Host WSL-19
+  HostName 192.168.11.19
+  User root
+  Port 2222
+
+Host FT2000-ARM64-52
+  HostName 192.168.11.52
+  User vire
+
+Host VM_109
+  HostName 192.168.11.74
+  User vire
+  Port 22
+
+
+Host VM_113-vrnet-dev
+  HostName 192.168.12.113
+  User vire
+  Port 22
+
+Host VM_18
+  HostName 192.168.11.129
+  User vire
+  Port 22
+
+Host jyl-gcc7
+  HostName 192.168.11.76
+  User root
+  Port 20722
+
+
+Host cicd_artifacts
+  HostName 192.168.0.99
+  User cicd
+  Port 22
+
+Host vrnet_cloud_cpp_deploy
+  HostName 192.168.11.137
+  User vire
+  Port 22
+
+

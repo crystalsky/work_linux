@@ -1,0 +1,14 @@
+===== uptime =====
+ 17:50:46 up 85 days,  1:24,  3 users,  load average: 6.43, 6.10, 6.24
+
+===== who -b =====
+         system boot  2026-07-15 16:21
+
+===== systemctl --failed =====
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+0 loaded units listed.
+
+===== last reboot =====
+reboot   system boot  5.14.0-687.10.1. Wed Jul 15 16:21   still running
+
+wtmp begins Wed Jul 15 16:21:35 2026

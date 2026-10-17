@@ -1,0 +1,179 @@
+ARG TARGETARCH
+ARG MIRROR_URL="http://mirrors.cdvire.cn"
+
+FROM registry.cdvire.cn/vire_base/ubuntu1804_dev_env:1.1-${TARGETARCH}
+
+ARG TARGETARCH
+ARG MIRROR_URL
+ARG GIT_USER_NAME=dever
+ARG GIT_USER_EMAIL=dever@cdvire.cn
+# ============================================================
+# 预留下载链接变量（用户可通过 --build-arg 覆盖）
+# ============================================================
+ARG VSCODE_x86_64_URL="http://192.168.16.253:15020/02_%E5%BC%80%E5%8F%91%E8%BD%AF%E4%BB%B6/VSCODE/code-server/code-server-4.16.1-linux-amd64.tar.gz"
+ARG VSCODE_amd64_URL=${VSCODE_x86_64_URL}
+ARG VSCODE_arm64_URL="http://192.168.16.253:15020/02_%E5%BC%80%E5%8F%91%E8%BD%AF%E4%BB%B6/VSCODE/code-server/code-server-4.16.1-linux-arm64.tar.gz"
+ARG CMAKE_x86_64_URL="http://192.168.16.253:15020/02_%E5%BC%80%E5%8F%91%E8%BD%AF%E4%BB%B6/cmake/cmake-3.27.9-linux-x86_64.tar.gz"
+ARG CMAKE_arm64_URL="http://192.168.16.253:15020/02_%E5%BC%80%E5%8F%91%E8%BD%AF%E4%BB%B6/cmake/cmake-3.27.9-linux-aarch64.tar.gz"
+ARG CMAKE_amd64_URL=${CMAKE_x86_64_URL}
+# =========================================
+ENV GIT_USER_NAME=${GIT_USER_NAME}
+ENV GIT_USER_EMAIL=${GIT_USER_EMAIL}
+# =========================================
+# 更新源（MIRROR_URL 可通过 --build-arg 覆盖，默认 huaweicloud）
+RUN : "${MIRROR_URL:=http://mirrors.huaweicloud.com}" && \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        base="${MIRROR_URL}/ubuntu-ports"; \
+    else \
+        base="${MIRROR_URL}/ubuntu"; \
+    fi && \
+    printf '%s\n' \
+      "deb [trusted=yes] ${base}/ bionic main restricted universe multiverse" \
+      "deb [trusted=yes] ${base}/ bionic-updates main restricted universe multiverse" \
+      "deb [trusted=yes] ${base}/ bionic-security main restricted universe multiverse" \
+      > /etc/apt/sources.list
+
+# 安装缺失工具
+RUN apt-get update && \
+    apt-get install -y dos2unix libomp-dev && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# =========================================
+# 📐 安装 cmake 3.29.2（删除系统自带，替换为官方二进制）
+RUN \
+    apt-get remove -y cmake && \
+    eval "url=\"\$CMAKE_${TARGETARCH}_URL\"" && \
+    [ -n "$url" ] || { echo "CMAKE_${TARGETARCH}_URL is empty"; exit 1; } && \
+    wget -q "$url" -O /tmp/cmake.tar.gz && \
+    mkdir -p /opt/cmake && \
+    tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1 && \
+    rm /tmp/cmake.tar.gz && \
+    ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake && \
+    ln -sf /opt/cmake/bin/ctest /usr/local/bin/ctest && \
+    ln -sf /opt/cmake/bin/cpack /usr/local/bin/cpack && \
+    cmake --version
+
+# =========================================
+# 🖥️ 安装 code-server 4.100.3
+RUN \
+    eval "url=\"\$VSCODE_${TARGETARCH}_URL\"" && \
+    [ -n "$url" ] || { echo "VSCODE_${TARGETARCH}_URL is empty"; exit 1; } && \
+    wget -q "$url" -O /tmp/code-server.tar.gz && \
+    mkdir -p /opt/code-server && \
+    tar -xzf /tmp/code-server.tar.gz -C /opt/code-server --strip-components=1 && \
+    rm /tmp/code-server.tar.gz && \
+    ln -sf /opt/code-server/bin/code-server /usr/local/bin/code-server && \
+    code-server --version
+
+# 🔧 code-server 启动参数（可通过 -e 覆盖）
+ENV VS_CODE_AUTH_MODE=password \
+    VS_CODE_PASSWORD=vire \
+    VS_CODE_WORKSPACE=/workspace \
+    SSHD_ROOT_PASSWORD=root
+
+RUN mkdir -p /root/.config/code-server /workspace && \
+    printf '%s\n' \
+      'bind-addr: 0.0.0.0:8080' \
+      'auth: password' \
+      'cert: false' \
+    > /root/.config/code-server/config.yaml
+
+# 🚀 1️⃣ Git 配置
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    'echo "配置 git 配置..."' \
+    'if command -v git > /dev/null 2>&1; then' \
+    '  git config --global --get safe.directory | grep -qx "^\*$" || git config --global --add safe.directory "*"' \
+    '  git config --global user.name  "${GIT_USER_NAME}"' \
+    '  git config --global user.email "${GIT_USER_EMAIL}"' \
+    'fi' \
+    > /usr/local/bin/git-init.sh && \
+    chmod +x /usr/local/bin/git-init.sh
+
+# 🚀 1️⃣ SSH 初始化脚本 SSH + Root 密码
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    '# SSH' \
+    '[ -f /etc/ssh/ssh_host_rsa_key ] || ssh-keygen -A' \
+    '' \
+    '# 动态设置 Root 密码' \
+    'if [ -n "$SSHD_ROOT_PASSWORD" ]; then' \
+    '    echo "root:${SSHD_ROOT_PASSWORD}" | chpasswd' \
+    'fi' \
+    > /usr/local/bin/ssh-init.sh && \
+    chmod +x /usr/local/bin/ssh-init.sh
+
+# 🚀 2️⃣ code-server entrypoint：根据 ENV 动态生成配置并后台启动
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    '# 根据 ENV 生成 code-server 配置' \
+    'cat > /root/.config/code-server/config.yaml <<CONF' \
+    'bind-addr: 0.0.0.0:8080' \
+    'auth: ${VS_CODE_AUTH_MODE:-password}' \
+    'cert: false' \
+    'CONF' \
+    'export PASSWORD="${VS_CODE_PASSWORD:-vire}"' \
+    '' \
+    '# 启动 code-server（后台）' \
+    'if command -v code-server &>/dev/null; then' \
+    '    ws="${VS_CODE_WORKSPACE:-/workspace}"' \
+    '    mkdir -p "$ws"' \
+    '    echo "Starting code-server on 0.0.0.0:8080, workspace=$ws"' \
+    '    nohup code-server "$ws" --config /root/.config/code-server/config.yaml >/tmp/code-server.log 2>&1 &' \
+    'fi' \
+    > /usr/local/bin/code-entrypoint.sh && \
+    chmod +x /usr/local/bin/code-entrypoint.sh
+
+# 🚀 3️⃣ 用户自定义扩展入口（占位，可挂载或写入额外服务启动逻辑）
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    '# ═══════════════════════════════════════════════' \
+    '# 用户自定义扩展入口' \
+    '# 在此添加额外服务启动逻辑（如 nginx, db 等）' \
+    '# 该脚本由 /entrypoint_all.sh 自动调用' \
+    '# ═══════════════════════════════════════════════' \
+    ':' \
+    > /user_entrypoint.sh && \
+    chmod +x /user_entrypoint.sh
+
+# 🚀 4️⃣ 总入口：依次调用 ssh-init → code-entrypoint → user_entrypoint → CMD
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    '# .. GIT 环境初始化' \
+    '/usr/local/bin/git-init.sh' \
+    '' \
+    '# .. SSH 环境初始化' \
+    '/usr/local/bin/ssh-init.sh' \
+    '' \
+    '# .. 后台启动 code-server（不阻塞）' \
+    '/usr/local/bin/code-entrypoint.sh &' \
+    '' \
+    '# .. 用户自定义扩展' \
+    'if [ -f /user_entrypoint.sh ]; then' \
+    '    echo "[entrypoint] Running /user_entrypoint.sh"' \
+    '    bash /user_entrypoint.sh &' \
+    'fi' \
+    '' \
+    '# .. 有 CMD 时 SSHD 后台运行并执行 CMD；否则 SSHD 前台阻塞' \
+    'if [ $# -gt 0 ]; then' \
+    '    /usr/sbin/sshd -D &' \
+    '    exec "$@"' \
+    'else' \
+    '    exec /usr/sbin/sshd -D' \
+    'fi' \
+    > /entrypoint_all.sh && \
+    chmod +x /entrypoint_all.sh
+
+EXPOSE 22 8080
+ENTRYPOINT ["/entrypoint_all.sh"]

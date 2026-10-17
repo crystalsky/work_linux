@@ -1,0 +1,6 @@
+{
+  "eval_id": 0,
+  "eval_name": "local-performance",
+  "prompt": "我这台开发机最近用着有点卡，帮我看看是 CPU、内存还是磁盘 IO 的问题，定位一下原因。本机就是目标，不用连远程。",
+  "assertions": []
+}

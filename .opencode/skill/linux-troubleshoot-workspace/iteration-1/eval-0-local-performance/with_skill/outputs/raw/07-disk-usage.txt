@@ -1,0 +1,32 @@
+=== df -hT ===
+Filesystem     Type             Size  Used Avail Use% Mounted on
+tmpfs          tmpfs            3.2G  2.3M  3.2G   1% /run
+efivarfs       efivarfs         438K  373K   61K  87% /sys/firmware/efi/efivars
+/dev/nvme0n1p3 ext4             453G   27G  404G   7% /
+tmpfs          tmpfs             16G  866M   15G   6% /dev/shm
+tmpfs          tmpfs            5.0M   12K  5.0M   1% /run/lock
+tmpfs          tmpfs             16G     0   16G   0% /run/qemu
+/dev/sda2      ext4             1.8T  204G  1.6T  12% /data
+/dev/nvme0n1p1 vfat             487M  6.2M  480M   2% /boot/efi
+tmpfs          tmpfs            3.2G  312K  3.2G   1% /run/user/1000
+/dev/sdb2      fuseblk          622G  543G   79G  88% /media/vire/Work_2
+/dev/nvme1n1p3 fuseblk          256G  215G   41G  84% /media/vire/Windows
+/dev/sdb1      fuseblk          622G  100G  522G  16% /media/vire/Shared
+/dev/sdb3      fuseblk          622G  477G  145G  77% /media/vire/A192D573B1709CC0
+squashfuse     fuse.squashfuse  119M  119M     0 100% /tmp/.mount_zenx8remp16101931323967803224
+/dev/nvme1n1p5 fuseblk          221G   40G  181G  19% /media/vire/Soft&Env
+
+=== df -i ===
+Filesystem        Inodes   IUsed     IFree IUse% Mounted on
+tmpfs            4067635    1560   4066075    1% /run
+/dev/nvme0n1p3  30228480  722624  29505856    3% /
+tmpfs            4067635    2925   4064710    1% /dev/shm
+tmpfs            4067635       8   4067627    1% /run/lock
+tmpfs            4067635       1   4067634    1% /run/qemu
+/dev/sda2      122077184  767146 121310038    1% /data
+tmpfs             813527     247    813280    1% /run/user/1000
+/dev/sdb2       84490812  253000  84237812    1% /media/vire/Work_2
+/dev/nvme1n1p3  44249916 1090421  43159495    3% /media/vire/Windows
+/dev/sdb1      550513760  425554 550088206    1% /media/vire/Shared
+/dev/sdb3      152718476  784758 151933718    1% /media/vire/A192D573B1709CC0
+/dev/nvme1n1p5 192950492  338643 192611849    1% /media/vire/Soft&Env

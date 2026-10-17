@@ -1,0 +1,61 @@
+name: sonarqube
+
+services:
+  sonarqube:
+    image: sonarqube:${SONAR_VERSION:-10.6.0-community}
+    container_name: sonarqube
+    hostname: sonarqube
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-sonar}
+      SONAR_JDBC_USERNAME: ${POSTGRES_USER:-sonar}
+      SONAR_JDBC_PASSWORD: ${POSTGRES_PASSWORD:-sonar}
+      SONAR_WEB_JAVA_OPTS: ${SONAR_WEB_JAVA_OPTS:--Xmx2048m -Xms2048m}
+      SONAR_SEARCH_JAVA_OPTS: ${SONAR_SEARCH_JAVA_OPTS:--Xmx2048m -Xms2048m}
+      SONAR_CE_JAVA_OPTS: ${SONAR_CE_JAVA_OPTS:--Xmx1024m -Xms1024m}
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${SONAR_WEB_PORT:-9000}:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:9000/api/system/status
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-15}
+    container_name: sonarqube-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sonar}
+      POSTGRES_USER: ${POSTGRES_USER:-sonar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sonar}
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-sonar} -d ${POSTGRES_DB:-sonar}
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  postgresql_data:

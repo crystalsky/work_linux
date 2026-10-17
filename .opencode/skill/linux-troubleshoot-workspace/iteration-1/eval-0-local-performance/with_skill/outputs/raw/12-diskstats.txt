@@ -1,0 +1,27 @@
+=== /proc/diskstats 近似IO (前4字段: 主 次 设备 读完成) ===
+loop0 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+loop1 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+loop2 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+loop3 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+loop4 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+loop5 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+loop6 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+loop7 reads=0 rd_sectors=0 writes=0 wr_sectors=0 io_inprogress=0 io_ms=0
+nvme1n1 reads=2685 rd_sectors=89076 writes=2 wr_sectors=2 io_inprogress=0 io_ms=332
+nvme1n1p1 reads=582 rd_sectors=11096 writes=2 wr_sectors=2 io_inprogress=0 io_ms=40
+nvme1n1p2 reads=73 rd_sectors=2008 writes=0 wr_sectors=0 io_inprogress=0 io_ms=13
+nvme1n1p3 reads=1244 rd_sectors=37432 writes=0 wr_sectors=0 io_inprogress=0 io_ms=205
+nvme1n1p4 reads=97 rd_sectors=6520 writes=0 wr_sectors=0 io_inprogress=0 io_ms=21
+nvme1n1p5 reads=582 rd_sectors=28892 writes=0 wr_sectors=0 io_inprogress=0 io_ms=112
+nvme0n1 reads=2654701 rd_sectors=62161050 writes=6739982 wr_sectors=295340746 io_inprogress=0 io_ms=1882812
+nvme0n1p1 reads=463 rd_sectors=15208 writes=2 wr_sectors=2 io_inprogress=0 io_ms=47
+nvme0n1p2 reads=1910982 rd_sectors=19875664 writes=1300279 wr_sectors=54861000 io_inprogress=0 io_ms=523051
+nvme0n1p3 reads=743148 rd_sectors=42266266 writes=5439701 wr_sectors=240479744 io_inprogress=0 io_ms=2353090
+sda reads=1973253 rd_sectors=173013623 writes=25178998 wr_sectors=675519586 io_inprogress=0 io_ms=17883661
+sda1 reads=244 rd_sectors=10768 writes=2 wr_sectors=2 io_inprogress=0 io_ms=42
+sda2 reads=1972837 rd_sectors=172999194 writes=25178996 wr_sectors=675519584 io_inprogress=0 io_ms=18311951
+sda3 reads=42 rd_sectors=357 writes=0 wr_sectors=0 io_inprogress=0 io_ms=6
+sdb reads=37569 rd_sectors=2356880 writes=147 wr_sectors=1440 io_inprogress=0 io_ms=105139
+sdb1 reads=1255 rd_sectors=127736 writes=42 wr_sectors=432 io_inprogress=0 io_ms=11186
+sdb2 reads=33223 rd_sectors=2070896 writes=51 wr_sectors=480 io_inprogress=0 io_ms=73223
+sdb3 reads=2984 rd_sectors=155344 writes=54 wr_sectors=528 io_inprogress=0 io_ms=23741

@@ -1,0 +1,51 @@
+# 代码分析工具链包清单
+# 格式（TSV）: apt包名 <TAB> 类别 <TAB> 优先级(must|nice) <TAB> 用途
+#
+# 适用于 Ubuntu 20.04 / 22.04 / Linux Mint（apt 系）
+# 说明：must=必须，nice=可选增强。个别包名随发行版不同，安装脚本会自动容错跳过。
+
+build-essential	build	must	编译器(gcc/g++/gcov)与基础构建工具(make)
+cmake	build	must	跨平台构建系统
+ninja-build	build	must	高速构建后端
+pkg-config	build	must	第三方依赖查找
+git	build	must	版本管理/获取工具
+
+universal-ctags	understand	must	符号与接口索引(ctags)
+cscope	understand	must	跨文件符号检索
+global	understand	must	GNU GLOBAL(gtags) 代码导航
+doxygen	understand	must	API 文档与调用图生成
+graphviz	understand	must	Doxygen 调用图渲染(dot)
+clangd	understand	must	代码索引与跳转(LSP)
+
+cppcheck	static	must	C/C++ 静态缺陷检查
+clang	static	must	LLVM 编译器(ast-dump / clang-analyzer)
+clang-tidy	static	must	静态检查与修复建议
+clang-tools	static	must	clang 工具集
+
+lcov	coverage	must	覆盖率收集与 HTML 报告
+gcovr	coverage	must	覆盖率报告(CI 友好)
+
+gdb	debug	must	调试器
+valgrind	debug	must	内存与调用分析(callgrind)
+
+python3	base	must	Python 运行时
+python3-pip	base	must	Python 包管理
+python3-venv	base	must	Python 虚拟环境
+jq	base	must	JSON 处理
+tree	base	must	目录结构展示
+
+clang-format	style	nice	代码格式化
+llvm	understand	nice	LLVM 工具链(llvm-cov 等)
+libclang-dev	understand	nice	clang 开发库(部分工具依赖)
+
+libgtest-dev	test	nice	GoogleTest 单元测试框架
+libgmock-dev	test	nice	GoogleMock 模拟框架
+libbenchmark-dev	perf	nice	Google Benchmark 性能基准
+
+strace	trace	nice	系统调用追踪
+ltrace	trace	nice	库函数调用追踪
+trace-cmd	trace	nice	ftrace 前端
+bpftrace	trace	nice	eBPF 动态追踪
+lttng-tools	trace	nice	LTTng 追踪套件
+
+shellcheck	style	nice	Shell 脚本静态检查

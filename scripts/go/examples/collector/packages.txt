@@ -1,0 +1,89 @@
+# =============================================================================
+# collector 包清单（build_go_mod_bundle.sh -f/--packages 使用）
+#   * 每行一个 module，可写 module@version 精确指定版本；省略 @version 视为 @latest
+#   * 以 # 开头的行与空行会被忽略
+#   * 脚本会 go get 每个条目并下载其【全量传递依赖】，生成 collector/go.mod|go.sum
+#   * 离线按目标工程构建时，务必用目标工程自身 go.mod/go.sum 的精确版本；
+#     本清单用于“尽量多覆盖指定包”，@latest 只锁构建时最新版，可能不匹配历史版本
+#   * 带 @version 的条目为【内网 Go 1.25.3 兼容上限版本】：这些模块的最新版已要求
+#     Go >= 1.26，内网工具链无法使用；此处锁定各自「要求 Go <= 1.25.3 的最新版」。
+#     升级内网工具链到 >= 1.26 后可去掉对应 @version 恢复 @latest。
+# =============================================================================
+github.com/spf13/cobra
+github.com/spf13/pflag
+github.com/spf13/viper
+github.com/spf13/cast
+github.com/urfave/cli/v2
+github.com/fatih/color
+github.com/olekukonko/tablewriter
+github.com/jedib0t/go-pretty/v6
+github.com/schollz/progressbar/v3
+github.com/briandowns/spinner
+github.com/manifoldco/promptui
+github.com/AlecAivazis/survey/v2
+github.com/charmbracelet/bubbletea
+github.com/charmbracelet/lipgloss
+github.com/rivo/tview
+github.com/mattn/go-isatty
+github.com/mattn/go-colorable
+github.com/sirupsen/logrus
+go.uber.org/zap
+github.com/rs/zerolog
+k8s.io/klog/v2
+github.com/joho/godotenv
+gopkg.in/yaml.v3
+sigs.k8s.io/yaml
+github.com/BurntSushi/toml
+github.com/pelletier/go-toml/v2
+github.com/fsnotify/fsnotify
+github.com/gin-gonic/gin
+github.com/labstack/echo/v4
+github.com/go-chi/chi/v5
+github.com/gorilla/mux
+github.com/valyala/fasthttp
+github.com/go-resty/resty/v2
+github.com/hashicorp/go-retryablehttp
+github.com/google/uuid
+github.com/pkg/errors
+github.com/hashicorp/go-version
+github.com/Masterminds/semver/v3
+golang.org/x/sync@v0.22.0
+golang.org/x/crypto@v0.55.0
+golang.org/x/term@v0.45.0
+golang.org/x/time@v0.15.0
+github.com/golang-jwt/jwt/v5
+github.com/prometheus/client_golang
+github.com/prometheus/common@v0.71.0
+go.opentelemetry.io/otel
+github.com/redis/go-redis/v9
+github.com/go-sql-driver/mysql
+github.com/lib/pq
+go.etcd.io/etcd/client/v3@v3.6.14
+github.com/aws/aws-sdk-go-v2/config
+github.com/aws/aws-sdk-go-v2/service/s3
+github.com/xanzy/go-gitlab
+github.com/google/go-github/v60
+github.com/go-git/go-git/v5
+code.gitea.io/sdk/gitea@v0.23.2
+github.com/bndr/gojenkins
+github.com/jenkins-x/go-scm@v1.15.22
+github.com/google/go-containerregistry
+github.com/docker/docker
+github.com/docker/cli
+github.com/docker/go-connections
+github.com/docker/go-units
+github.com/moby/term
+github.com/opencontainers/image-spec
+github.com/containerd/containerd
+k8s.io/client-go@v0.35.9
+k8s.io/api@v0.35.9
+k8s.io/apimachinery@v0.35.9
+k8s.io/kubectl@v0.35.9
+k8s.io/metrics@v0.35.9
+sigs.k8s.io/controller-runtime@v0.23.3
+helm.sh/helm/v3@v3.21.0
+github.com/tektoncd/pipeline@v1.9.3
+github.com/argoproj/argo-cd/v2@v2.14.21
+github.com/argoproj/argo-workflows/v3@v3.7.11
+github.com/grpc-ecosystem/go-grpc-middleware
+github.com/grpc-ecosystem/grpc-gateway/v2@v2.30.0

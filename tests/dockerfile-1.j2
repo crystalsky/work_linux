@@ -1,0 +1,168 @@
+# =========================================
+# FROM_IMAGE_NAME 镜像名称
+FROM {{FROM_IMAGE_NAME}}
+
+ARG MIRROR_URL=http://mirrors.cdvire.cn
+ARG GIT_USER_NAME=developer
+ARG GIT_USER_EMAIL=developer@cdvire.cn
+# =========================================
+# 定义基础路径变量
+ENV VRNET_CLOUD_ROOT=/opt/{{PACKAGE_NAME}}
+ENV VRNET_ENGINE_BASE=${VRNET_CLOUD_ROOT}/vrnet_cloud_cpp
+ENV VRNET_BUILD_SERVICE_BASE=${VRNET_CLOUD_ROOT}/vrnet_cloud_build_service
+ENV BUILD_ROOT_3RD=${VRNET_BUILD_SERVICE_BASE}/3rd
+
+ENV VRNET_CLOUD_ENGINE_BIN=${VRNET_ENGINE_BASE}/bin
+ENV VRNET_CLOUD_ENGINE_LIB=${VRNET_ENGINE_BASE}/lib
+ENV VRNET_CLOUD_ENGINE_PLUGINS=${VRNET_CLOUD_ENGINE_BIN}/VRPlugins/ActorPlugins
+ENV VRNET_CLOUD_ENGINE_DEPS=${VRNET_ENGINE_BASE}/deps_libs
+# =========================================
+# 构建服务环境文件
+ENV ENV_FILE=${VRNET_CLOUD_ROOT}/.env
+ENV GIT_USER_NAME=${GIT_USER_NAME}
+ENV GIT_USER_EMAIL=${GIT_USER_EMAIL}
+# =========================================
+ENV LANG=zh_CN.UTF-8
+ENV LANGUAGE=zh_CN:zh
+ENV LC_ALL=zh_CN.UTF-8
+
+# 程序崩溃生成的core dump文件在可执行运行程序的目录下
+# 此项无法设置，在宿主机设置或者运行123容器使用 privilege模式
+# RUN echo "core-%e-%p-%t" > /proc/sys/kernel/core_pattern
+
+{% if DOCKER_SRC_IS_FILE=="TRUE" %}
+COPY {{DOCKER_SRC_NAME}} /tmp
+RUN mkdir -p ${VRNET_CLOUD_ROOT} && \
+    tar -xzf /tmp/{{DOCKER_SRC_NAME}} -C ${VRNET_CLOUD_ROOT} --strip-components=1 && \
+    rm -f /tmp/{{DOCKER_SRC_NAME}}
+{% else %}
+# 输入打包程序的目录
+COPY {{DOCKER_SRC_NAME}} ${VRNET_CLOUD_ROOT}
+{% endif %}
+
+# ============================================================
+RUN set -ex && \
+    ARCH="$(uname -m)" && \
+    MIRROR_URL="${MIRROR_URL%/}" && \
+    case "$ARCH" in \
+        aarch64|arm64) URL="${MIRROR_URL}/ubuntu-ports" ;; \
+        x86_64|amd64)  URL="${MIRROR_URL}/ubuntu" ;; \
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    printf '%s\n' \
+        "deb ${URL}/ bionic main restricted universe multiverse" \
+        "deb ${URL}/ bionic-updates main restricted universe multiverse" \
+        "deb ${URL}/ bionic-security main restricted universe multiverse" > /etc/apt/sources.list && \
+    printf 'Acquire::AllowInsecureRepositories "true";\nAcquire::AllowDowngradeToInsecureRepositories "true";' > /etc/apt/apt.conf.d/99insecure && \
+    cat /etc/apt/sources.list
+
+RUN apt-get update && \
+    apt-get install -y dos2unix libomp-dev && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# =========================================
+
+# 安装KUBECTL容器环境
+RUN set -ex && \
+    ARCH="$(uname -m)" && \
+    case "$ARCH" in \
+        aarch64|arm64) URL="http://app.cdvire.cn/02_%E5%BC%80%E5%8F%91%E8%BD%AF%E4%BB%B6/k8s/kubectl_1.28.0_arm64.tar.gz" ;; \
+        x86_64|amd64)  URL="http://app.cdvire.cn/02_%E5%BC%80%E5%8F%91%E8%BD%AF%E4%BB%B6/k8s/kubectl_1.28.0_x86_64.tar.gz" ;; \
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    if command -v wget >/dev/null 2>&1; then \
+        CMD="wget -qO-"; \
+    elif command -v curl >/dev/null 2>&1; then \
+        CMD="curl -sSL"; \
+    else \
+        echo "Neither wget nor curl found"; exit 1; \
+    fi && \
+    $CMD "$URL" | tar -xzf - -C /tmp && \
+    mv /tmp/kubectl /usr/bin/kubectl && \
+    chmod +x /usr/bin/kubectl
+# =========================================
+# ENV PATH="/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/home/vire/miniconda3/bin/:/opt/cmake/bin:${VRNET_CLOUD_ENGINE_BIN}:${PATH}"
+ENV PATH="${VRNET_CLOUD_ENGINE_BIN}:${PATH}"
+ENV LD_LIBRARY_PATH="${VRNET_CLOUD_ENGINE_BIN}:${VRNET_CLOUD_ENGINE_LIB}:${VRNET_CLOUD_ENGINE_DEPS}:${VRNET_CLOUD_ENGINE_PLUGINS}:${LD_LIBRARY_PATH}"
+# =========================================
+WORKDIR ${VRNET_BUILD_SERVICE_BASE}
+
+# 通过python3 安装包
+RUN command -v python3 >/dev/null 2>&1 || { echo >&2 "python3 not found"; exit 1; } && \
+    python3 -m pip install -r requirements.txt \
+    -i http://pypi.cdvire.cn/simple \
+    --trusted-host pypi.cdvire.cn && python3 -m pip list
+# =========================================
+# 🚀 1️⃣ SSH 初始化脚本：主置ssh + Root 密码
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    '# SSH' \
+    '[ -f /etc/ssh/ssh_host_rsa_key ] || ssh-keygen -A' \
+    '' \
+    '# 动态设置 Root 密码' \
+    'if [ -n "$SSHD_ROOT_PASSWORD" ]; then' \
+    '    echo "root:${SSHD_ROOT_PASSWORD}" | chpasswd' \
+    'fi' \
+    '' \
+    'echo "配置 ssh 私钥..."' \
+    'ssh-keygen -t rsa -N "" -f /root/.ssh/id_rsa' \
+    > /usr/local/bin/ssh-init.sh && \
+    chmod +x /usr/local/bin/ssh-init.sh
+# =========================================
+# 后台服务脚本
+# user_entrypoint.sh
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    'echo "配置 git 配置..."' \
+    'if command -v git > /dev/null 2>&1; then' \
+    '  git config --global --get safe.directory | grep -qx "^\*$" || git config --global --add safe.directory "*"' \
+    '  git config --global user.name  "${GIT_USER_NAME}"' \
+    '  git config --global user.email "${GIT_USER_EMAIL}"' \
+    'fi' \
+    '' \
+    'echo "2. Begin Starting Core Service...."' \
+    'bash ${VRNET_CLOUD_ROOT}/linux_start_all.sh' \
+    '' \
+    'echo "开始执行服务监控脚本...监控主要服务日志..."' \
+    'bash ${VRNET_CLOUD_ROOT}/monitor_proc.sh' \
+    > /user_entrypoint.sh && \
+    chmod +x /user_entrypoint.sh
+# =========================================
+# EntryPoint
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '' \
+    '# 0. 设置文件描述符限制' \
+    'ulimit -n 65536' \
+    '' \
+    '# 1. SSH 环境初始化' \
+    '/usr/local/bin/ssh-init.sh' \
+    '' \
+    '# 2. 后台启动 code-server（不阻塞）' \
+    '/usr/local/bin/code-entrypoint.sh &' \
+    '' \
+    '# 3. 用户自定义扩展' \
+    'if [ -f /user_entrypoint.sh ]; then' \
+    '    echo "[entrypoint] Running /user_entrypoint.sh"' \
+    '    bash /user_entrypoint.sh &' \
+    'fi' \
+    '' \
+    '# 4. 有 CMD 时 SSHD 后台运行并执行 CMD；否则 SSHD 前台阻塞' \
+    'if [ $# -gt 0 ]; then' \
+    '    /usr/sbin/sshd -D &' \
+    '    exec "$@"' \
+    'else' \
+    '    exec /usr/sbin/sshd -D' \
+    'fi' \
+    > /entrypoint_all.sh && \
+    chmod +x /entrypoint_all.sh
+
+ENTRYPOINT ["/entrypoint_all.sh"]
+# =========================================
+# 测试开发环境是否正常
+# RUN which cmake && which ctest && which cpack && which cmake-gui && cmake --version

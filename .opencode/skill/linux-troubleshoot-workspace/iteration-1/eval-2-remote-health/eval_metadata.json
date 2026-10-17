@@ -1,0 +1,6 @@
+{
+  "eval_id": 2,
+  "eval_name": "remote-health",
+  "prompt": "给 SERVER_252 做一次系统巡检，出一份体检报告，把有问题的项标出来。",
+  "assertions": []
+}

@@ -1,0 +1,38 @@
+===== timedatectl =====
+               Local time: Thu 2026-10-08 17:52:02 CST
+           Universal time: Thu 2026-10-08 09:52:02 UTC
+                 RTC time: Thu 2026-10-08 09:52:03
+                Time zone: Asia/Shanghai (CST, +0800)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+
+===== chronyc tracking =====
+Reference ID    : C0A8106E (ntp-core1.cdvire.cn)
+Stratum         : 11
+Ref time (UTC)  : Thu Oct 08 09:42:34 2026
+System time     : 0.000045113 seconds slow of NTP time
+Last offset     : -0.000104198 seconds
+RMS offset      : 0.000107988 seconds
+Frequency       : 67.037 ppm slow
+Residual freq   : -0.026 ppm
+
+===== last -n 10 =====
+root     pts/3        192.168.12.52    Thu Oct  8 13:53 - 16:18  (02:24)
+root     pts/3        192.168.12.52    Wed Sep 30 15:54 - 15:54  (00:00)
+luli     pts/3        192.168.12.38    Tue Sep 29 16:34 - 14:14  (21:40)
+root     pts/3        192.168.16.100   Tue Sep 29 11:31 - 14:32  (03:00)
+root     pts/9        192.168.12.52    Mon Sep 28 10:15 - 17:54 (2+07:38)
+root     pts/8        192.168.12.52    Thu Sep 24 18:17   still logged in
+luli     pts/8        192.168.12.38    Tue Sep 22 13:15 - 16:03  (02:47)
+luli     pts/3        192.168.12.38    Sun Sep 20 10:02 - 17:22 (8+07:20)
+root     pts/0        192.168.12.52    Sun Sep 20 08:35   still logged in
+luli     pts/3        192.168.12.38    Sat Sep 19 16:39 - 16:40  (00:00)
+
+wtmp begins Wed Jul 15 16:21:35 2026
+
+===== ssh failed (24h) =====
+
+===== reboot-required (RHEL) =====
+no /var/run/reboot-required flag
+needs-restarting not available

@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "报告将卡顿主因定位为内存/Swap 耗尽，而非 CPU 或磁盘 IO",
+      "passed": true,
+      "evidence": "含 swap 且提及耗尽/100%（files=17）"
+    },
+    {
+      "text": "明确给出磁盘 IO 是否异常的判读（排除或确认）",
+      "passed": true,
+      "evidence": "文本含 iostat/iowait/wa=/D 状态等 IO 判读依据"
+    },
+    {
+      "text": "所有建议的修复/清理命令均标注需用户确认，未自动执行任何变更",
+      "passed": true,
+      "evidence": "含 需确认/未执行 等安全边界措辞"
+    },
+    {
+      "text": "在工作目录留下了诊断产出报告文件",
+      "passed": true,
+      "evidence": "存在 markdown 报告文件"
+    },
+    {
+      "text": "生成了符合规范（含 title/keywords 等 YAML 文件头）的可沉淀运维手册文件",
+      "passed": true,
+      "evidence": "手册文件=20261008-linux-dev-machine-slowness-swap-exhaustion.md"
+    },
+    {
+      "text": "原始诊断输出按检查项分别存档为独立文件",
+      "passed": true,
+      "evidence": ".txt 文件数=15"
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "total": 6,
+    "pass_rate": 1.0
+  }
+}

@@ -1,0 +1,46 @@
+===== df -hT =====
+Filesystem           Type      Size  Used Avail Use% Mounted on
+devtmpfs             devtmpfs  126G     0  126G   0% /dev
+tmpfs                tmpfs     126G     0  126G   0% /dev/shm
+tmpfs                tmpfs      51G  1.9G   49G   4% /run
+/dev/mapper/rlm-root xfs       500G  138G  363G  28% /
+/dev/sdb1            xfs       960M  398M  563M  42% /boot
+tmpfs                tmpfs      26G     0   26G   0% /run/user/0
+/dev/mapper/rlm-home xfs       300G  2.6G  298G   1% /home
+/dev/sda1            xfs        26T  6.3T   20T  25% /data
+overlay              overlay   500G  138G  363G  28% /var/lib/docker/overlay2/ad690f81707bdff5a307d148aa8747532a3f5d3334c1bb08bfeabdf17e0854e2/merged
+overlay              overlay   500G  138G  363G  28% /var/lib/docker/overlay2/2b72465df3877930af142d35a4a09dfbddbc46d006e83a23f4b38f4eae7e1a1e/merged
+tmpfs                tmpfs      26G     0   26G   0% /run/user/1001
+overlay              overlay   500G  138G  363G  28% /var/lib/docker/overlay2/b940efe3640c1cad6ca3bb7b9c1ed9e44172d4cba12e720dea432054365f5d6b/merged
+overlay              overlay   500G  138G  363G  28% /var/lib/docker/overlay2/1d8cb87391a03ecbeced2cf3e3d8e0bce5b1f239eebc8a92dec340bfad5880e7/merged
+overlay              overlay   500G  138G  363G  28% /var/lib/docker/overlay2/c5ef4f380538a4986e6a4bf06c0873844355c3e5efdfc8c55fb845c2d87db6fd/merged
+overlay              overlay   500G  138G  363G  28% /var/lib/docker/overlay2/0e38ca4aea9577642e20d8ffb3751598bd684340a0d92913efa9122bdd97da68/merged
+
+===== df -i =====
+Filesystem               Inodes    IUsed      IFree IUse% Mounted on
+devtmpfs               32892746     1046   32891700    1% /dev
+tmpfs                  32898872        2   32898870    1% /dev/shm
+tmpfs                    819200     1840     817360    1% /run
+/dev/mapper/rlm-root  262144000  1521881  260622119    1% /
+/dev/sdb1                524288      369     523919    1% /boot
+tmpfs                   6579774       36    6579738    1% /run/user/0
+/dev/mapper/rlm-home  157286400       40  157286360    1% /home
+/dev/sda1            2734528704 10688732 2723839972    1% /data
+overlay               262144000  1521881  260622119    1% /var/lib/docker/overlay2/ad690f81707bdff5a307d148aa8747532a3f5d3334c1bb08bfeabdf17e0854e2/merged
+overlay               262144000  1521881  260622119    1% /var/lib/docker/overlay2/2b72465df3877930af142d35a4a09dfbddbc46d006e83a23f4b38f4eae7e1a1e/merged
+tmpfs                   6579774       16    6579758    1% /run/user/1001
+overlay               262144000  1521881  260622119    1% /var/lib/docker/overlay2/b940efe3640c1cad6ca3bb7b9c1ed9e44172d4cba12e720dea432054365f5d6b/merged
+overlay               262144000  1521881  260622119    1% /var/lib/docker/overlay2/1d8cb87391a03ecbeced2cf3e3d8e0bce5b1f239eebc8a92dec340bfad5880e7/merged
+overlay               262144000  1521881  260622119    1% /var/lib/docker/overlay2/c5ef4f380538a4986e6a4bf06c0873844355c3e5efdfc8c55fb845c2d87db6fd/merged
+overlay               262144000  1521881  260622119    1% /var/lib/docker/overlay2/0e38ca4aea9577642e20d8ffb3751598bd684340a0d92913efa9122bdd97da68/merged
+
+===== lsblk -f =====
+NAME         FSTYPE      FSVER    LABEL UUID                                   FSAVAIL FSUSE% MOUNTPOINTS
+sda                                                                                           
+└─sda1       xfs                        c316955c-9147-44c2-901d-29634d388656     19.2T    24% /data
+sdb                                                                                           
+├─sdb1       xfs                        f2a1b94f-dd8f-4ac5-af5e-d6e24c43c9af    562.2M    41% /boot
+└─sdb2       LVM2_member LVM2 001       LwZ0xd-Kn2x-Lhgi-GPvZ-4Jok-y45d-F7Ppu9                
+  ├─rlm-root xfs                        0d01e0a9-3492-4e9e-8484-4fa57d5978bb    362.5G    27% /
+  ├─rlm-swap swap        1              6b250ddc-3fc8-4830-8572-8626577402f8                  [SWAP]
+  └─rlm-home xfs                        c1577b45-2f0d-4720-9798-fd6777bbbebd    297.3G     1% /home

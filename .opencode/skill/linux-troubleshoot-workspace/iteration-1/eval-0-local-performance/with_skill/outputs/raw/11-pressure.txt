@@ -1,0 +1,26 @@
+=== /proc/pressure/memory (PSI 内存压力) ===
+some avg10=0.00 avg60=0.00 avg300=0.00 total=17782307
+full avg10=0.00 avg60=0.00 avg300=0.00 total=16990542
+
+=== /proc/pressure/cpu ===
+some avg10=0.37 avg60=0.45 avg300=0.29 total=10486411758
+full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+
+=== /proc/pressure/io ===
+some avg10=0.00 avg60=0.00 avg300=0.00 total=1276303180
+full avg10=0.00 avg60=0.00 avg300=0.00 total=1055984300
+
+=== vmstat -s (分页统计) ===
+      4076816 K swap cache
+     15999996 K total swap
+     15994856 K used swap
+         5140 K free swap
+    118810290 K paged in
+    485430199 K paged out
+      2483350 pages swapped in
+      6857625 pages swapped out
+
+=== swappiness ===
+60
+=== overcommit ===
+0

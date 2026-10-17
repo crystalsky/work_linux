@@ -1,0 +1,23 @@
+{
+  "skill_name": "container-offline-deploy",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "帮我在本地把 redis:7-alpine 部署起来先跑一下：端口映射 16379:6379，数据目录用 /tmp/redis-data（本机可写）。请拉起服务并做端口可达测试，把访问方式告诉我，我手动试一下。先不要打包成离线包。本机外网受限，redis:7-alpine 本地已有缓存。",
+      "expected_output": "本地部署并运行 redis，端口 16379 监听且可达（有端口探测/HTTP 证据）；明确把访问方式交给用户并等待确认；未生成离线镜像 tar、未打包。",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "本地测试已经通过，现在把这个服务打包成离线包，我这边不指定输出目录。服务是 MinIO，镜像 vrnet-cloud/minio:latest_x86，API 端口 19000、控制台 19001，数据目录 /srv/minio/data。请导出离线镜像并生成标准离线部署件，同时写部署手册、刷新文档索引。本机外网受限，镜像本地已有。",
+      "expected_output": "在默认目录 /home/登录用户/_docker-packages/minio 下生成标准 bundle（compose、.env、.env.example、images.txt、images/*.tar、manifest.txt、export.sh、deploy.sh、README.md）；生成部署手册并刷新 docs/README.md。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我要部署 Gitea + Redis 到内网，先在本地跑通再打包。镜像 vrnet-cloud/gitea:1.25.4（端口 13000，数据 /srv/gitea/data）和 redis:7-alpine（端口 16380，数据 /srv/redis/data）。请本地部署并做端口可达测试，然后打包成离线包（不指定目录），并生成部署手册、更新索引。本机 pull 不通，两镜像本地都有缓存。",
+      "expected_output": "多服务本地部署 + 端口可达测试；在默认目录 /home/登录用户/_docker-packages/<服务名> 打包，两镜像均导出 tar 并写入 manifest；生成部署手册并刷新索引。",
+      "files": []
+    }
+  ]
+}

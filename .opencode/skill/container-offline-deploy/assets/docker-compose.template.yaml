@@ -1,0 +1,21 @@
+# <service> 离线部署编排文件
+# 说明:
+#   - 所有可变值走 ${VAR}，具体取值放在同目录 .env，便于离线机按需覆盖
+#   - 不要在 compose 里硬编码密码/密钥
+#   - 镜像名与 images.txt 保持一致，docker load 后才能被正确引用
+services:
+  <service>:
+    image: ${IMAGE}
+    container_name: ${CONTAINER_NAME}
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT}:${CONTAINER_PORT}"
+    volumes:
+      - ${DATA_DIR}:/data
+    environment:
+      TZ: ${TZ}
+    healthcheck:
+      test: ["CMD-SHELL", "<healthcheck-command>"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
