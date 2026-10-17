@@ -74,6 +74,8 @@
   - [gitea_go_upload.sh 使用指南：将 Go module zip 批量上传到 Gitea 私有 Go 源](devops_go/20260930-gitea-go-upload-script-usage-guide.md)
   - [Gitea 内网无法下载指定 Go 依赖的根因分析与离线包补全方案](devops_go/20260930-go-mod-bundle-incomplete-root-cause-and-offline-fix.md)
   - [go.sum 作用、可删除性及跨架构一致性辨析](devops_go/20260930-go-sum-explained-and-cross-arch-consistency.md)
+- **devops_nodejs**
+  - [通用 Node.js 运行时离线包制作与多版本共存部署手册（第一步）](devops_nodejs/20261017-nodejs-offline-runtime-bundle-guide.md)（含 `scripts/devops/nodejs_offline_bundle.sh`；官方纯净、同 dest 多版本并存、默认零污染、支持 `--activate`/`--link-bin`/`--uninstall`）
 - **devops_python**
   - [pip download 跨平台/版本依赖包下载指南](devops_python/20260717-pip-download-cross-platform.md)
   - [Python3.11 glibc2.27 跨架构 markdown 生态离线 wheel 下载指南](devops_python/20260911-pip-download-markdown-ecosystem-wheels.md)
@@ -93,7 +95,10 @@
   - [Agent-Reach 自建容器镜像与内网离线部署手册（零配置核心渠道 + 批量测试）](devops_ai_agent/20261013-agent-reach-container-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/agent-reach/`：`deploy.sh`、`build.sh`、`export.sh`、`tests/run-tests.sh`）
   - [TencentDB Agent Memory 三件套 Docker 内网离线部署手册（官方镜像 + 官方脚本编排）](devops_ai_agent/20261013-tencentdb-agent-memory-docker-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/tencentdb-agent-memory/`：`deploy.sh`、`export.sh`、`images/`、`global-images/`）
   - [Pi（earendil-works/pi）编码 Agent CLI 的安装、配置与使用手册](devops_ai_agent/20261017-pi-coding-agent-install-usage-guide.md)（v1.3.0，用户级 npm 安装，免 sudo）
+  - [Pi Agent 接入自建 LiteLLM 网关配置手册（OpenAI 兼容端点 + 默认模型）](devops_ai_agent/20261017-pi-litellm-gateway-config-guide.md)（网关 192.168.16.142:4000，实测含 tool calling 验证）
+  - [Pi 编码 Agent 离线部署（两步法）：通用 Node 运行时包 + Pi 应用包](devops_ai_agent/20261017-pi-offline-bundle-build-deploy-guide.md)（含离线包 `~/.work_linux_working/artifacts/pi-app-offline-1.3.0.tar.gz` 25 MB；第一步 Node 包见 devops_nodejs 分类）
   - [Rowboat（rowboatlabs/rowboat）Linux 便携式部署与使用手册（官方 zip，免 sudo）](devops_ai_agent/20261017-rowboat-linux-portable-deploy-guide.md)（v1.0.5；Linux 无 AppImage，可选 deb/rpm/zip）
+  - [Rowboat 便携式离线部署包制作与目标机部署手册（官方 zip + 脱敏配置 + 桌面集成）](devops_ai_agent/20261017-rowboat-offline-bundle-build-deploy-guide.md)（含离线包 `~/.work_linux_working/artifacts/rowboat-offline-1.0.5.tar.gz`，144 MB，配置排除凭据并脱敏）
   - [AionUi（iOfficeAI/AionUi）Linux 部署与使用手册（官方 deb + 免 sudo 解包运行）](devops_ai_agent/20261017-aionui-linux-deploy-guide.md)（v2.2.2；GitHub Release 无二进制，Linux 仅官方 deb）
   - [OpenWork（different-ai/openwork）Linux AppImage 部署与使用手册（含产物归位规范）](devops_ai_agent/20261017-openwork-appimage-deploy-guide.md)（v0.18.58；含 `scripts/devops/electron-desktop-integrate.sh` 通用桌面集成脚本）
 - **devops_code_analysis**

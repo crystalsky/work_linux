@@ -150,6 +150,9 @@ fi
 
 # ------------------------------ 3. 刷新数据库并注册协议 ------------------------------
 log "刷新桌面数据库"
+run "mkdir -p '$APPS_DIR'"
+# xdg-mime 需要写 ~/.config/mimeapps.list，目标机若还没有该目录会报错
+run "mkdir -p \"\${XDG_CONFIG_HOME:-\$HOME/.config}\""
 run "update-desktop-database '$APPS_DIR' >/dev/null 2>&1 || true"
 for s in ${SCHEMES[@]+"${SCHEMES[@]}"}; do
   log "注册协议 x-scheme-handler/$s → $APP_ID"
