@@ -48,6 +48,7 @@
   - [Bash-it 安装配置与使用手册](devops_shell/20260610-bashit-install-config-guide.md)
   - [ldd_install.sh 动态库依赖收集脚本与 CMake 集成指南](devops_shell/20260828-ldd-install-script-cmake-integration.md)
   - [fd + fzf 安装配置与常用查找命令使用手册](devops_shell/20260920-fd-fzf-install-usage-guide.md)
+  - [direnv 目录级环境变量管理：work_linux 仓库 .envrc + .env.default 落地手册](devops_shell/20261017-direnv-env-management.md)（含仓库文件 `.envrc`、`.env.default`）
 - **devops_editor**
   - [vim 安装与依赖修复记录](devops_editor/20260601-vim-install-record.md)
   - [micro 终端文本编辑器：功能说明、使用手册、配置与插件管理指南](devops_editor/20260930-micro-editor-install-config-guide.md)（含 `scripts/editor/micro_setup.sh`）
@@ -91,6 +92,10 @@
   - [工程内 AI 技能（Skills）的跨 Agent 管理与放置标准](devops_ai_agent/20260930-project-ai-skills-placement-standard.md)
   - [Agent-Reach 自建容器镜像与内网离线部署手册（零配置核心渠道 + 批量测试）](devops_ai_agent/20261013-agent-reach-container-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/agent-reach/`：`deploy.sh`、`build.sh`、`export.sh`、`tests/run-tests.sh`）
   - [TencentDB Agent Memory 三件套 Docker 内网离线部署手册（官方镜像 + 官方脚本编排）](devops_ai_agent/20261013-tencentdb-agent-memory-docker-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/tencentdb-agent-memory/`：`deploy.sh`、`export.sh`、`images/`、`global-images/`）
+  - [Pi（earendil-works/pi）编码 Agent CLI 的安装、配置与使用手册](devops_ai_agent/20261017-pi-coding-agent-install-usage-guide.md)（v1.3.0，用户级 npm 安装，免 sudo）
+  - [Rowboat（rowboatlabs/rowboat）Linux 便携式部署与使用手册（官方 zip，免 sudo）](devops_ai_agent/20261017-rowboat-linux-portable-deploy-guide.md)（v1.0.5；Linux 无 AppImage，可选 deb/rpm/zip）
+  - [AionUi（iOfficeAI/AionUi）Linux 部署与使用手册（官方 deb + 免 sudo 解包运行）](devops_ai_agent/20261017-aionui-linux-deploy-guide.md)（v2.2.2；GitHub Release 无二进制，Linux 仅官方 deb）
+  - [OpenWork（different-ai/openwork）Linux AppImage 部署与使用手册（含产物归位规范）](devops_ai_agent/20261017-openwork-appimage-deploy-guide.md)（v0.18.58；含 `scripts/devops/electron-desktop-integrate.sh` 通用桌面集成脚本）
 - **devops_code_analysis**
   - [C/C++ 代码分析工具链：快速部署、接口/业务链扫描与单元测试体系实施方案](devops_code_analysis/20261009-code-analysis-toolchain-deployment-guide.md)（含 `scripts/code_analysis/`：安装、离线打包、接口扫描、静态分析、单测脚手架、覆盖率、业务链追踪、code-review-graph 多语言接口手册、Understand-Anything 业务域图谱、Dockerfile）
   - [Node.js / Java / C++ 自动化测试工具链与离线包清单（Python 3.11 / JDK≥8 / glibc≤2.27）](devops_code_analysis/20261009-nodejs-java-cpp-testing-toolchain-package-list.md)

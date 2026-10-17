@@ -4,7 +4,7 @@ type: note
 status: active
 scope: os_desktop
 created: 2026-06-01 00:00:00
-updated: 2026-10-17 14:14:00
+updated: 2026-10-17 15:35:00
 summary: "总结 AppImage 两种安装模式（直接运行、安装到 /opt 并创建桌面快捷方式），给出通用安装模板与 FUSE 依赖、权限、GUI 等注意事项。"
 keywords: [linux, appimage, install, desktop, fuse, opt]
 verification: "ls -l /opt/*/*.AppImage && ./<app>.AppImage --version"
@@ -132,3 +132,7 @@ sudo chmod +x "/opt/$APP_NAME/$APP_NAME"
 ## 关联文档
 
 - [AppImage 版 Obsidian 点击 obsidian:// 链接报「无法理解该网址」：Electron 协议处理器只认 CHROME_DESKTOP 的根因与修复](20261017-obsidian-appimage-url-scheme-handler.md)
+- 通用集成脚本 `scripts/devops/electron-desktop-integrate.sh`：一条命令生成桌面项 + 图标 + 注册自定义协议（自动注入 `CHROME_DESKTOP`），适用于 AppImage、官方 zip 解包目录、`dpkg-deb -x` 解包目录等一切「非包管理器安装」的 Electron 应用；实测案例见
+  [OpenWork AppImage 部署与使用手册](../devops_ai_agent/20261017-openwork-appimage-deploy-guide.md)、
+  [Rowboat Linux 便携式部署与使用手册](../devops_ai_agent/20261017-rowboat-linux-portable-deploy-guide.md)、
+  [AionUi Linux 部署与使用手册](../devops_ai_agent/20261017-aionui-linux-deploy-guide.md)。

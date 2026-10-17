@@ -4,10 +4,10 @@ type: note
 status: active
 scope: devops_shell
 created: 2026-10-17 14:50:00
-updated: 2026-10-17 14:50:00
-summary: "在 work_linux 仓库落地 direnv 目录级环境变量管理：.envrc 负责加载、.env.default 存放可入库的默认值、.env 存放不入库的本地覆盖，进出目录自动生效与还原，并给出安装接入、授权校验与常见坑。"
+updated: 2026-10-17 14:56:00
+summary: "在 work_linux 仓库落地 direnv 目录级环境变量管理：.envrc 负责加载、.env.default 存放可入库的默认值、.env 存放不入库的本地覆盖，进出目录自动生效与还原；记录免 sudo 的静态二进制安装方式，并给出授权状态判定、覆盖优先级与常见坑的实测结论。"
 keywords: [linux, direnv, envrc, dotenv, environment-variable, bash, gitignore]
-verification: "cd /home/vire/work_luli/work_linux && direnv status && echo \"$DOCKER_PACKAGES_DIR\""
+verification: "direnv status（Found RC allowed 0 即已授权）&& direnv export bash | grep WORK_DIR"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。"
 ---
 
@@ -73,7 +73,7 @@ dotenv_if_exists .env
 `.env.default` 采用「少量生效 + 分组按需启用」的写法，当前**默认生效**的为以下几项：
 
 ```dotenv
-DIRENV_LOG_FORMAT=                                   # 关闭进出目录的提示输出
+DIRENV_LOG_FORMAT=                                   # 静默提示（首次加载除外，详见常见坑 8）
 WORK_DIR=/home/vire/.work_linux_working              # 产物根目录（AGENTS.md 产物存放规范）
 DOCKER_PACKAGES_DIR=/home/vire/_docker-packages      # 历史遗留：既有离线 bundle 目录
 ```
@@ -100,21 +100,54 @@ DOCKER_PACKAGES_DIR=/home/vire/_docker-packages      # 历史遗留：既有离�
 .env.local
 ```
 
-## 🛠️ 安装与接入（三步）
+## 🛠️ 安装与接入
 
 > [!IMPORTANT]
-> 以下步骤包含系统级安装与 shell 配置写入，属于变更操作，需确认后执行。
+> 以下步骤包含安装与 shell 配置写入，属于变更操作，需确认后执行。
+
+### 方式一：静态二进制安装（本机实际采用，免 sudo）
+
+官方 release 提供静态链接的 Go 单文件二进制，无需 root、无动态库依赖，且下载物按产物规范落到 `~/.work_linux_working/downloads/`：
 
 ```bash
-# 1. 安装 direnv（Ubuntu 源 universe 中已收录，当前候选版本 2.37.1-1）
-sudo apt install -y direnv
+VER=v2.38.2
+DEST="$HOME/.work_linux_working/downloads/direnv/$VER"
+mkdir -p "$DEST" && cd "$DEST"
+curl -sLO "https://github.com/direnv/direnv/releases/download/$VER/direnv.linux-amd64"
+chmod +x direnv.linux-amd64
+ln -sfn "$DEST/direnv.linux-amd64" "$HOME/bin/direnv"   # ~/bin 已在 PATH 中
+direnv version                                          # 2.38.2
+```
 
-# 2. 把 hook 挂到 bash（写入 ~/.bashrc 末尾；zsh 则用 direnv hook zsh）
+自检（官方未随 release 提供校验和文件，故改为二进制形态核对）：
+
+```bash
+file direnv.linux-amd64   # ELF 64-bit LSB executable, x86-64, statically linked, stripped
+ldd  direnv.linux-amd64   # 不是动态可执行文件
+```
+
+### 方式二：apt 安装（需 root，随系统更新）
+
+```bash
+sudo apt install -y direnv      # Ubuntu universe，候选版本 2.37.1-1
+```
+
+### 接入 shell 与授权（两种方式通用）
+
+```bash
+# 1. 把 hook 挂到 bash（写入 ~/.bashrc 末尾；zsh 则用 direnv hook zsh）
 echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
 
-# 3. 授权本目录（direnv 的安全机制：.envrc 可执行任意命令，必须显式放行）
+# 2. 授权本目录（direnv 的安全机制：.envrc 能执行任意命令，必须显式放行）
 cd /home/vire/work_luli/work_linux
 direnv allow .
+```
+
+实际写入 `~/.bashrc` 的内容（改动前已备份为 `~/.bashrc.bak.<时间戳>`）：
+
+```bash
+# direnv: 目录级环境变量（见 docs/devops_shell/20261017-direnv-env-management.md）
+eval "$(direnv hook bash)"
 ```
 
 > [!TIP]
@@ -123,24 +156,40 @@ direnv allow .
 
 ## ✅ 验证
 
+以下命令与输出为本机实测结果。
+
 ```bash
-# 1. 确认 hook 已生效（新开终端后）
-direnv status
+# 1. 授权状态：注意该字段与直觉相反，allowed 0 表示「已授权」，未授权时为 1
+cd /home/vire/work_luli/work_linux && direnv status | rg -i "found rc"
 # Found RC path /home/vire/work_luli/work_linux/.envrc
-# Found RC allowed true
+# Found RC allowed 0
+# Found RC allowPath /home/vire/.local/share/direnv/allow/d567d691...
 
-# 2. 确认变量已注入
-echo "$DOCKER_PACKAGES_DIR"
-# /home/vire/_docker-packages
+# 2. 查看将要导出的变量（不依赖交互式提示符，脚本与 CI 中也可用）
+direnv export bash
+# direnv: loading ~/work_luli/work_linux/.envrc
+# direnv: export +DOCKER_PACKAGES_DIR +WORK_DIR
+# export DIRENV_LOG_FORMAT='';export WORK_DIR=$'/home/vire/.work_linux_working';...
 
-# 3. 确认离开目录后自动还原
-cd /tmp && echo "[$DOCKER_PACKAGES_DIR]"
-# []
+# 3. 模拟交互式钩子：进入注入、离开还原（非交互 shell 中手动调用 _direnv_hook）
+bash -c '
+  export PATH="$HOME/bin:$PATH"
+  eval "$(direnv hook bash)"
+  cd /home/vire/work_luli/work_linux; _direnv_hook
+  echo "进入后 WORK_DIR=[$WORK_DIR] DOCKER_PACKAGES_DIR=[$DOCKER_PACKAGES_DIR]"
+  cd /tmp; _direnv_hook
+  echo "离开后 WORK_DIR=[$WORK_DIR]"'
+# 进入后 WORK_DIR=[/home/vire/.work_linux_working] DOCKER_PACKAGES_DIR=[/home/vire/_docker-packages]
+# 离开后 WORK_DIR=[]
 
-# 4. 确认本地覆盖优先级（新建 .env 写入同名变量后重进目录）
-echo 'DOCKER_PACKAGES_DIR=/tmp/override' > .env && cd . && echo "$DOCKER_PACKAGES_DIR"
-# /tmp/override
+# 4. 覆盖优先级：.env > .env.default（实测已往返验证）
+printf 'WORK_DIR=/tmp/override\n' > .env
+direnv export bash | rg -o "WORK_DIR=[^;]*"    # WORK_DIR=$'/tmp/override'
+rm -f .env
+direnv export bash | rg -o "WORK_DIR=[^;]*"    # WORK_DIR=$'/home/vire/.work_linux_working'
 ```
+
+`.env` 全程未出现在 `git status` 中，确认忽略规则生效。
 
 ## ⚠️ 常见坑与注意事项
 
@@ -150,7 +199,9 @@ echo 'DOCKER_PACKAGES_DIR=/tmp/override' > .env && cd . && echo "$DOCKER_PACKAGE
 4. **覆盖方向要记牢**：`.env` > `.env.default` > 外部 shell。若某变量在外部已按需设置（例如仅在某个终端启用的代理），又在 `.env.default` 里取消注释，则该终端的设置会被统一覆盖。
 5. **路径写绝对值**：不要依赖变量展开（如 `$HOME`）拼路径，避免解析差异导致取值偏离预期。
 6. **不要把 `.env` 误提交**：`git check-ignore -v .env` 可自检忽略规则是否命中。
-7. **.envrc 具备执行能力**：它本质是一段 bash，从不可信仓库拉取的 `.envrc` 在 `direnv allow` 前应人工审阅内容。
+7. **`.envrc` 具备执行能力**：它本质是一段 bash，从不可信仓库拉取的 `.envrc` 在 `direnv allow` 前应人工审阅内容；`.envrc` 自身内容一旦变化，旧授权立即失效并提示 `is blocked`（改 `.env` / `.env.default` 不触发，`watch_file` 会自动重载）。
+8. **`DIRENV_LOG_FORMAT` 无法静默「当次首次加载」**：direnv 在运行 `.envrc` **之前**读取该变量，因此把它写在 `.env.default` 里，只能让同一 shell 内**后续**的加载与离开静默；新开终端的第一次进入目录仍会打印一行 `loading ... / export ...`。要连首次也静默，需在 `~/.bashrc` 中 direnv hook 那一行**之前**加 `export DIRENV_LOG_FORMAT=''`（实测：预先置空后 `direnv export bash` 无任何输出）。
+9. **`direnv status` 的 `Found RC allowed` 字段与直觉相反**：`0` 表示**已授权**，`1` 表示**未授权**。判断是否真的生效，最可靠的依据是 `direnv export bash` 能否列出目标变量，以及是否出现 `is blocked` 报错。
 
 ## 🔗 关联文档
 
