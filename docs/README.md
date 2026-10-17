@@ -101,6 +101,8 @@
   - [Rowboat 便携式离线部署包制作与目标机部署手册（官方 zip + 脱敏配置 + 桌面集成）](devops_ai_agent/20261017-rowboat-offline-bundle-build-deploy-guide.md)（含离线包 `~/.work_linux_working/artifacts/rowboat-offline-1.0.5.tar.gz`，144 MB，配置排除凭据并脱敏）
   - [AionUi（iOfficeAI/AionUi）Linux 部署与使用手册（官方 deb + 免 sudo 解包运行）](devops_ai_agent/20261017-aionui-linux-deploy-guide.md)（v2.2.2；GitHub Release 无二进制，Linux 仅官方 deb）
   - [OpenWork（different-ai/openwork）Linux AppImage 部署与使用手册（含产物归位规范）](devops_ai_agent/20261017-openwork-appimage-deploy-guide.md)（v0.18.58；含 `scripts/devops/electron-desktop-integrate.sh` 通用桌面集成脚本）
+  - [anthropics/skills 全部技能依赖的本地化下载与离线包制备（Node.js 24 + Python 3.11/3.12）](devops_ai_agent/20261017-anthropic-skills-deps-offline-download.md)（含 `scripts/skills/download_anthropic_skills_deps.sh` 与 `scripts/skills/deps/` 清单；npm core 318 包 / full 517 包，py311+py312 各 69 个 wheel）
+  - [pandoc / tesseract 文档处理 CLI 的「解压即用」离线包制备（内网无源场景）](devops_ai_agent/20261017-doc-tools-offline-bundle-guide.md)（含 `scripts/devops/download_doc_tools_offline.sh`；pandoc 3.12.1 静态二进制 + tesseract 5.5.3 AppImage 解包 + tessdata_fast 语言数据，归档 126 MB）
 - **devops_code_analysis**
   - [C/C++ 代码分析工具链：快速部署、接口/业务链扫描与单元测试体系实施方案](devops_code_analysis/20261009-code-analysis-toolchain-deployment-guide.md)（含 `scripts/code_analysis/`：安装、离线打包、接口扫描、静态分析、单测脚手架、覆盖率、业务链追踪、code-review-graph 多语言接口手册、Understand-Anything 业务域图谱、Dockerfile）
   - [Node.js / Java / C++ 自动化测试工具链与离线包清单（Python 3.11 / JDK≥8 / glibc≤2.27）](devops_code_analysis/20261009-nodejs-java-cpp-testing-toolchain-package-list.md)
@@ -110,6 +112,7 @@
   - [Understand-Anything：代码业务语义知识图谱/用例生成引擎的安装、离线部署与使用手册](devops_code_analysis/20261012-understand-anything-install-usage-guide.md)（含 `scripts/code_analysis/install_understand_anything.sh`）
 - **devops_crawler_to_md**
   - [crawler-to-md 容器：把文档站点抓取并生成 Markdown/JSON 的使用指南](devops_crawler_to_md/20261013-crawler-to-md-doc-download-guide.md)
+  - [pi.dev 官方文档整站抓取与逐句中英对照翻译（crawler-to-md + LiteLLM 网关）](devops_crawler_to_md/20261017-pi-dev-docs-crawl-bilingual-translate.md)（42 页 / 4428 处译文；含 `scripts/docs/crawl_docs_to_md.sh`、`split_pages.py`、`bilingual_translate.py`，产物在 `~/.work_linux_working/outputs/pi-dev-docs/`）
 - **devops_sonarqube**
   - [SonarQube 静态代码问题 API 报告生成脚本（CSV 输出）使用指南](devops_sonarqube/20260911-sonarqube-api-report-csv-guide.md)
   - [SonarScanner for Maven 3.11.0.3922 内网离线下载与 Nexus 上传手册](devops_sonarqube/20260914-sonar-maven-plugin-offline-download-upload-guide.md)

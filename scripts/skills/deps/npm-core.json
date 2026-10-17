@@ -1,0 +1,28 @@
+{
+  "name": "anthropic-skills-deps-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "anthropics/skills 核心技能所需的 npm 依赖（docx / pptx / mcp-builder / claude-api）。安装到独立 prefix，不污染既有 Node 环境。",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "docx": "latest",
+    "pptxgenjs": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-icons": "latest",
+    "sharp": "latest",
+    "@anthropic-ai/sdk": "latest"
+  },
+  "devDependencies": {
+    "@anthropic-ai/aws-sdk": "latest",
+    "@modelcontextprotocol/inspector": "latest"
+  },
+  "comment": {
+    "docx": "docx 技能：以 npm 包 docx 生成/改写 .docx（SKILL.md 声明为 preinstalled，本机需自行安装）",
+    "pptxgenjs": "pptx 技能：以 pptxgenjs 生成 .pptx",
+    "react/react-dom/react-icons/sharp": "pptx 技能：图标渲染链路（react-icons 渲染 SVG -> sharp 栅格化）",
+    "@anthropic-ai/sdk": "claude-api 技能：TypeScript / 通用示例代码",
+    "@anthropic-ai/aws-sdk": "claude-api 技能：Claude on AWS 示例代码",
+    "@modelcontextprotocol/inspector": "mcp-builder 技能：MCP Inspector 调试工具（原 SKILL.md 用 npx 拉取）"
+  }
+}

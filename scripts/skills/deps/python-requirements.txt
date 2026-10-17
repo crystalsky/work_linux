@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# anthropics/skills 全部 Python 依赖汇总
+#
+# 用途：为 anthropics/skills 仓库中的技能准备可离线安装的 wheel。
+#       脚本 scripts/skills/download_anthropic_skills_deps.sh 会按 Python 版本
+#       （默认 3.11 / 3.12）分别下载到
+#       $WORK_DIR/wheelhouse/anthropic-skills/py<版本>/
+#
+# 说明：清单为「按技能去重后的并集」，同一依赖只列一次；
+#       每个分组的注释标注了依赖来源技能，便于按需裁剪。
+# ---------------------------------------------------------------------------
+
+# --- 文档类技能：docx（OOXML 校验与改写） -----------------------------------
+lxml
+defusedxml
+
+# --- 文档类技能：xlsx（电子表格读写与公式重算） -----------------------------
+openpyxl
+pandas
+markitdown[pptx]
+
+# --- 文档类技能：pdf（文本/表格提取、表单填写、OCR） ------------------------
+pdfplumber
+pypdf
+pdf2image
+pillow
+pytesseract
+pandas
+
+# --- 文档类技能：pptx（缩略图、文本转储、结构校验） -------------------------
+python-pptx
+markitdown[pptx]
+
+# --- slack-gif-creator（GIF 合成与校验） ------------------------------------
+imageio
+imageio-ffmpeg
+numpy
+pillow
+
+# --- mcp-builder（MCP 服务端评测脚本） --------------------------------------
+anthropic
+mcp
+
+# --- webapp-testing（本地 Web 应用自动化测试） ------------------------------
+playwright
+
+# --- skill-creator（SKILL.md 校验与打包） -----------------------------------
+PyYAML
+
+# --- claude-api（示例代码参考，非运行必需） ---------------------------------
+anthropic
