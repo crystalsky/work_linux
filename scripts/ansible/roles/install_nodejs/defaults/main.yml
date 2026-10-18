@@ -80,6 +80,7 @@ nodejs_runtime_packages:
 
 # ---------- install_base 钩子 ----------
 _install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
-_install_prepack_tasks: >-
-  {{ role_path ~ '/tasks/pack_runtime_debs.yml'
-     if nodejs_offline_include_runtime_debs | bool else '' }}
+# prepack 钩子始终指向 pack_prepare.yml：
+# 它内部先无条件解析已安装版本（供 _install_pack_sources 精确定位版本目录），
+# 再按 nodejs_offline_include_runtime_debs 决定是否收集运行库 deb。
+_install_prepack_tasks: "{{ role_path }}/tasks/pack_prepare.yml"

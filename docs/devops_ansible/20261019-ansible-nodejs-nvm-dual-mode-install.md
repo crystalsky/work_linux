@@ -69,9 +69,11 @@ scripts/ansible/roles/install_nodejs/
 ├── meta/main.yml
 ├── tasks/
 │   ├── main.yml
-│   ├── online_install.yml      # nvm install <major> → alias default → wrapper
-│   ├── pack_runtime_debs.yml   # 打包前收集 libstdc++6 依赖闭包
-│   └── offline_apply.yml       # 部署版本目录 → 补装 deb → wrapper
+│   ├── online_install.yml            # nvm install <major> → alias default → wrapper
+│   ├── pack_prepare.yml              # prepack 钩子：先解析版本，再收运行库
+│   ├── resolve_installed_version.yml # 从文件系统探测 _nodejs_ver
+│   ├── pack_runtime_debs.yml         # 收集 libstdc++6 依赖闭包
+│   └── offline_apply.yml             # 部署版本目录 → 补装 deb → wrapper
 └── templates/node-wrapper.sh.j2
 ```
 
@@ -116,14 +118,30 @@ uv run ansible-playbook playbooks/install_nodejs22.yml \
 
 | 离线包 | 体积 | 内容 |
 |--------|------|------|
-| `nvm-0.40.8.tar.gz` | 85 KB | `opt/nvm/{nvm.sh,nvm-exec,bash_completion,install.sh}` |
-| `nodejs22-22.tar.gz` | 91 MB | `opt/nvm/versions/node/v22.23.3/` + `tmp/ansible-pkg/nodejs-runtime-deb/*.deb`（5 个，3.3 MB） |
-| `nodejs24-24.tar.gz` | 91 MB | 同上，版本为 `v24.22.0` |
+| `nvm-0.40.8.tar.gz` | 44 KB | `opt/nvm/{nvm.sh,nvm-exec,bash_completion,install.sh}` 四个必需文件 |
+| `nodejs22-22.tar.gz` | 48 MB | `opt/nvm/versions/node/v22.23.3/` + `tmp/ansible-pkg/nodejs-runtime-deb/*.deb`（5 个） |
+| `nodejs24-24.tar.gz` | 49 MB | 同上，版本为 `v24.22.0` |
+
+随包运行库 deb（`libstdc++6` 的依赖闭包）：`libstdc++6`、`libgcc-s1`、`gcc-10-base`、`libc6`、`libcrypt1`。
 
 > [!TIP]
-> nvm 离线包最初打出 **166 MB**，因为 `_install_pack_sources` 指向整个 `/opt/nvm`，
-> 把 `versions/`（两个 Node 版本共 250 MB 未压缩）与 `.cache/`（nvm 下载缓存 61 MB）一起装了进来。
-> 修复方式是在 `_install_pack_exclude` 里显式排除 `*/versions/*`、`*/.cache/*`，包体回落到 85 KB。
+> **离线包踩过的两个体积坑：**
+>
+> ① nvm 包最初 **166 MB**，因为 `_install_pack_sources` 指向整个 `/opt/nvm`，
+> 把 `versions/`（两个 Node 版本）与 `.cache/`（61 MB 下载缓存）一起装了进来。
+> 修正：直接列 `nvm.sh`/`nvm-exec`/`bash_completion`/`install.sh` 四个必需文件（不靠排除规则），
+> 包体 44 KB。
+>
+> ② Node 包最初 **91 MB 且 22 与 24 内容完全相同**，因为源路径写的是父目录
+> `versions/node`，把两个版本都打了进去。
+> 修正：源路径精确到 `versions/node/{{ _nodejs_ver }}`，包体降到 48/49 MB。
+>
+> 这里有一个时序陷阱：`_nodejs_ver` 是 `online_install.yml` 用 `set_fact` 产生的，
+> 但打包走的是「目标已就绪」的 skip 路径，`online_install.yml` 不会执行，
+> 打包时 `_nodejs_ver` 根本不存在。
+> 因此新增 `tasks/pack_prepare.yml` 作为 prepack 钩子入口，
+> **无条件**先从文件系统探测已安装版本（`tasks/resolve_installed_version.yml`），
+> 再决定是否收集运行库 deb。
 
 ### 5. 关键配置
 
@@ -155,7 +173,13 @@ nodejs_offline_include_runtime_debs: true
 nodejs_runtime_packages: [libstdc++6]
 ```
 
-**`roles/install_nodejs/vars/main.yml` —— 探测命令（重点）**
+**`roles/install_nodejs/vars/main.yml` —— 打包源路径（重点）**
+
+```yaml
+_install_pack_sources:
+  - "{{ nvm_prefix }}/versions/node/{{ _nodejs_ver }}"   # 精确到单个版本
+  - "{{ nodejs_runtime_deb_dir }}"                        # 随包运行库 deb
+```
 
 ```yaml
 _install_probe_cmd: >-
@@ -213,7 +237,7 @@ bash -c 'export NVM_DIR=/opt/nvm; . /opt/nvm/nvm.sh; nvm use 22; node -v'
 | Node 22 在线 | `v22.23.3`（npm 10.9.9），`ok=52 changed=5` |
 | Node 24 在线 | `v24.22.0`（npm 11.19.1），`ok=52 changed=4` |
 | 三者幂等复跑 | 全部 `本次动作 = skip`、`changed=0` |
-| 离线包制作 | nvm 85 KB / nodejs22 91 MB / nodejs24 91 MB |
+| 离线包制作 | nvm 44 KB / nodejs22 48 MB / nodejs24 49 MB |
 | 全新容器纯离线安装 | nvm + 22 + 24 全部成功，`mode: offline` |
 | 离线幂等复跑 | 三者全部 `skip`、`changed=0` |
 | `node --version`（ssh 非交互） | `v24.22.0` ✅ |
@@ -234,7 +258,8 @@ bash -c 'export NVM_DIR=/opt/nvm; . /opt/nvm/nvm.sh; nvm use 22; node -v'
 | `nvm 不可用：未找到 /opt/nvm/nvm.sh` | 用了 `(nvm_prefix ~ '/nvm.sh') is exists`，Jinja 条件里不做路径检查 | 改用 `stat` 的结果 `_nodejs_nvm_sh.stat.exists` |
 | `nvm install` 报 `N/A` 或下载超时 | `nodejs.org` 直连不通 | 设 `nodejs_org_mirror=https://npmmirror.com/mirrors/node` |
 | 装了 Node 但 `npm` 报错找不到模块 | 只软链了 node 二进制，缺 `NVM_BIN`/`NVM_DIR` | 用 `node-wrapper.sh.j2` 包装脚本写死环境变量 |
-| 离线包 166 MB 异常大 | 打包时把 `versions/` 与 `.cache/` 一起收了 | `_install_pack_exclude` 加 `*/versions/*`、`*/.cache/*` |
+| 离线包体积异常（166 MB / 91 MB） | 打包源路径过宽：包含了 `versions/`、`.cache/` 或父目录 | nvm 直接列必需文件；nodejs 精确到 `versions/node/{{ _nodejs_ver }}` |
+| 打包报 `待打包路径不存在 .../v22` | `_nodejs_ver` 来自 skip 路径未执行的 online_install | 新增 `pack_prepare.yml` 作为 prepack 钩子，先无条件探测版本 |
 | 离线装完 `node` 报 `not found` 动态库 | 缺 `libstdc++6` 等系统运行库 | 保持 `nodejs_offline_include_runtime_debs: true`，随包带 deb |
 
 ---

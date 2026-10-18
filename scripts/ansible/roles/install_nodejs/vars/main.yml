@@ -19,9 +19,15 @@ _install_rollback_paths:
   - "{{ nvm_prefix }}/versions/node"
   - "{{ nodejs_bin_link_dir }}"
 
-# 打包路径：只带该大版本的 node 目录，避免把其他版本一起塞进离线包
+# 打包路径：只带本 role 负责的那个大版本的 node 目录。
+# 注意：不能写成 {{ nvm_prefix }}/versions/node（父目录），
+# 否则会把 nvm 里所有的 node 版本一起打进同一个包 ——
+# 22 和 24 的离线包会变成内容完全相同的 182MB 双版本包。
+# 具体版本号在 online_install 末尾由 _nodejs_ver 记录（形如 v22.23.3）。
 _install_pack_sources:
-  - "{{ nvm_prefix }}/versions/node"
+  - "{{ nvm_prefix }}/versions/node/{{ _nodejs_ver | default('v' ~ nodejs_major_version, true) }}"
+  # 随包携带的系统运行库 .deb（由 pack_runtime_debs.yml 收集）
+  - "{{ nodejs_runtime_deb_dir }}"
 
 _install_pack_exclude:
   - "*/node_modules/*/test/*"

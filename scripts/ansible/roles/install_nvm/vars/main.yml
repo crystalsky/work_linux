@@ -27,22 +27,23 @@ _install_rollback_paths:
   - "{{ nvm_prefix }}/install.sh"
   - "{{ nvm_profile_file }}"
 
-# 打离线包时收集的路径
+# 打离线包时收集的路径。
+# 注意：整个 /opt/nvm 里有大量源码仓库附带物（.github/Dockerfile/文件本等），
+# 真正运行所需的只有 nvm.sh / nvm-exec / bash_completion / install.sh，
+# 因此这里直接列具体文件，而不是整个目录 —— 否则即使排除了 versions/，
+# 包里仍会夹带 .github 里的图片等无关文件。
 _install_pack_sources:
-  - "{{ nvm_prefix }}"
+  - "{{ nvm_prefix }}/nvm.sh"
+  - "{{ nvm_prefix }}/nvm-exec"
+  - "{{ nvm_prefix }}/bash_completion"
+  - "{{ nvm_prefix }}/install.sh"
 
 # 关键排除项：
 #   versions/  —— node 各版本目录（体积巨大且由 install_nodejs 独立管理）
 #   .cache/    —— nvm 下载 node 时缓存的 tar.xz（数十 MB）
-#   .git/ test/ .github/ —— 源码仓库附带物，运行时不需要
 _install_pack_exclude:
-  - "*/versions/*"
-  - "*/.cache/*"
-  - "*/.git/*"
-  - "*/.github/*"
-  - "*/test/*"
-  - "*/test-fast/*"
-  - "*/node_modules/*"
+  - "{{ nvm_prefix }}/versions"
+  - "{{ nvm_prefix }}/.cache"
 
 # 解压后 nvm.sh 所在的候选目录名（GitHub archive 解开是 nvm-0.40.8/）
 _nvm_archive_dir_name: "nvm-{{ install_pkg_version }}"
