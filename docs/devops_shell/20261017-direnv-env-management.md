@@ -4,7 +4,7 @@ type: note
 status: active
 scope: devops_shell
 created: 2026-10-17 14:50:00
-updated: 2026-10-17 14:56:00
+updated: 2026-10-18 09:55:00
 summary: "在 work_linux 仓库落地 direnv 目录级环境变量管理：.envrc 负责加载、.env.default 存放可入库的默认值、.env 存放不入库的本地覆盖，进出目录自动生效与还原；记录免 sudo 的静态二进制安装方式，并给出授权状态判定、覆盖优先级与常见坑的实测结论。"
 keywords: [linux, direnv, envrc, dotenv, environment-variable, bash, gitignore]
 verification: "direnv status（Found RC allowed 0 即已授权）&& direnv export bash | grep WORK_DIR"
@@ -202,6 +202,7 @@ direnv export bash | rg -o "WORK_DIR=[^;]*"    # WORK_DIR=$'/home/vire/.work_lin
 7. **`.envrc` 具备执行能力**：它本质是一段 bash，从不可信仓库拉取的 `.envrc` 在 `direnv allow` 前应人工审阅内容；`.envrc` 自身内容一旦变化，旧授权立即失效并提示 `is blocked`（改 `.env` / `.env.default` 不触发，`watch_file` 会自动重载）。
 8. **`DIRENV_LOG_FORMAT` 无法静默「当次首次加载」**：direnv 在运行 `.envrc` **之前**读取该变量，因此把它写在 `.env.default` 里，只能让同一 shell 内**后续**的加载与离开静默；新开终端的第一次进入目录仍会打印一行 `loading ... / export ...`。要连首次也静默，需在 `~/.bashrc` 中 direnv hook 那一行**之前**加 `export DIRENV_LOG_FORMAT=''`（实测：预先置空后 `direnv export bash` 无任何输出）。
 9. **`direnv status` 的 `Found RC allowed` 字段与直觉相反**：`0` 表示**已授权**，`1` 表示**未授权**。判断是否真的生效，最可靠的依据是 `direnv export bash` 能否列出目标变量，以及是否出现 `is blocked` 报错。
+10. **本机 direnv 2.21.2 标准库无 `dotenv_if_exists`**：2.21.2 的 stdlib 只有 `dotenv`（文件不存在时报错 `return 1`），没有 `dotenv_if_exists`（文件不存在时静默跳过）。早期 `.envrc` 直接调用 `dotenv_if_exists .env` 会报 `command not found`（本手册上方 2.37 stdlib 的 `dotenv_if_exists` 源码只作参考，本机版本并不内置）。已改用兼容写法 `[[ -f .env ]] && dotenv .env`（`dotenv` 内部已含 `watch_file`，语义等价）。若后续升级 direnv ≥ 2.3x，可改回标准函数 `dotenv_if_exists`。
 
 ## 🔗 关联文档
 

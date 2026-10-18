@@ -40,10 +40,16 @@
 
 ### 🧰 开发与运维工具链（devops_*）
 
+- **devops_ansible**
+  - [Ansible 双模式软件运行环境安装基座（install_base + install_homebrew / install_ruby）](devops_ansible/20261018-ansible-dual-mode-install-base.md)（含 `scripts/ansible/`；online/offline 双模式、apt 国内镜像、包管理器等锁、快照回滚、状态标记、离线包制作分发）
+- **devops_env_snapshot**
+  - [Linux 开发环境整体离线快照（node/nvm + Homebrew 及 bottle 源 + Pi Agent 及插件技能 + oh-my-zsh）打包与复原手册](devops_env_snapshot/20261019-linux-devkit-offline-snapshot.md)（含 `scripts/devops/linux_devkit_pack.sh`；产物 `~/.work_linux_working/artifacts/linux-devkit-offline-20261019` 1.5 GB，bottle 57 个可直接当 HTTP 源，目标机 `install.sh --restore-cache` 一键复原 + `verify.sh` 自检）
 - **devops_docker**
   - [Docker 引擎与 Compose 插件安装记录（腾讯云源）](devops_docker/20260601-docker-engine-install-record.md)
   - [Podman 安装配置与离线部署指南](devops_docker/20260817-podman-install-config-guide.md)
   - [离线 Docker 镜像批量导入内网 Harbor（mailcow 离线包实测）](devops_docker/20261012-harbor-batch-push-offline-images.md)（含 `scripts/harbor/push-images-to-harbor.sh`）
+  - [Debian 13 沙箱开发容器镜像构建（Python 3.13 + uv + SSH）及 Ansible 接管验证](devops_docker/20261018-debian13-sandbox-image-python-uv-ssh.md)（含 `docker/debian13-sandbox/`、`scripts/ansible/`、批量测试脚本 `test-playbooks.sh`）
+  - [Ubuntu 20.04 LTS 沙箱镜像构建（Python 3.12 + uv + SSH）](devops_docker/20261019-ubuntu2004-sandbox-image-python312-uv.md)（`docker/ubuntu20.04-sandbox/`，含 sshd `SetEnv` 注入 PATH、glibc 2.31 旧发行版验证场景）
 - **devops_shell**
   - [Bash-it 安装配置与使用手册](devops_shell/20260610-bashit-install-config-guide.md)
   - [ldd_install.sh 动态库依赖收集脚本与 CMake 集成指南](devops_shell/20260828-ldd-install-script-cmake-integration.md)
@@ -74,8 +80,13 @@
   - [gitea_go_upload.sh 使用指南：将 Go module zip 批量上传到 Gitea 私有 Go 源](devops_go/20260930-gitea-go-upload-script-usage-guide.md)
   - [Gitea 内网无法下载指定 Go 依赖的根因分析与离线包补全方案](devops_go/20260930-go-mod-bundle-incomplete-root-cause-and-offline-fix.md)
   - [go.sum 作用、可删除性及跨架构一致性辨析](devops_go/20260930-go-sum-explained-and-cross-arch-consistency.md)
+- **devops_homebrew**
+  - [Homebrew（Linux/WSL2）在线安装、国内镜像加速与离线安装包制作手册](devops_homebrew/20261018-homebrew-install-config-guide.md)（含 `scripts/devops/homebrew_install.sh`、`scripts/devops/homebrew_offline_bundle.sh`）
 - **devops_nodejs**
   - [通用 Node.js 运行时离线包制作与多版本共存部署手册（第一步）](devops_nodejs/20261017-nodejs-offline-runtime-bundle-guide.md)（含 `scripts/devops/nodejs_offline_bundle.sh`；官方纯净、同 dest 多版本并存、默认零污染、支持 `--activate`/`--link-bin`/`--uninstall`）
+  - [nvm 配置管理与 Node.js 多版本切换手册（含国内镜像加速）](devops_nodejs/20261018-nvm-nodejs-version-management-guide.md)（nvm 0.40.3；git 安装 + npmmirror 加速 + default 别名 + .nvmrc；含本机 v22.23.3 → v24.22.0 满足 pi-cowboy 要求 Node ≥ 24.20.0 的实操）
+- **devops_ohmyzsh**
+  - [Oh My Zsh 在线安装、国内镜像加速与离线安装包制作手册](devops_ohmyzsh/20261018-ohmyzsh-install-config-guide.md)（含 `scripts/devops/ohmyzsh_install.sh`、`scripts/devops/ohmyzsh_offline_bundle.sh`）
 - **devops_python**
   - [pip download 跨平台/版本依赖包下载指南](devops_python/20260717-pip-download-cross-platform.md)
   - [Python3.11 glibc2.27 跨架构 markdown 生态离线 wheel 下载指南](devops_python/20260911-pip-download-markdown-ecosystem-wheels.md)
@@ -94,15 +105,18 @@
   - [工程内 AI 技能（Skills）的跨 Agent 管理与放置标准](devops_ai_agent/20260930-project-ai-skills-placement-standard.md)
   - [Agent-Reach 自建容器镜像与内网离线部署手册（零配置核心渠道 + 批量测试）](devops_ai_agent/20261013-agent-reach-container-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/agent-reach/`：`deploy.sh`、`build.sh`、`export.sh`、`tests/run-tests.sh`）
   - [TencentDB Agent Memory 三件套 Docker 内网离线部署手册（官方镜像 + 官方脚本编排）](devops_ai_agent/20261013-tencentdb-agent-memory-docker-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/tencentdb-agent-memory/`：`deploy.sh`、`export.sh`、`images/`、`global-images/`）
-  - [Pi（earendil-works/pi）编码 Agent CLI 的安装、配置与使用手册](devops_ai_agent/20261017-pi-coding-agent-install-usage-guide.md)（v1.3.0，用户级 npm 安装，免 sudo）
+  - [Pi（earendil-works/pi）编码 Agent CLI 的安装、配置与使用手册](devops_ai_agent/20261017-pi-coding-agent-install-usage-guide.md)（v1.3.0，用户级 npm 安装，免 sudo；含内网 npm 源不可达时 `--registry` 覆盖源的排错）
   - [Pi Agent 接入自建 LiteLLM 网关配置手册（OpenAI 兼容端点 + 默认模型）](devops_ai_agent/20261017-pi-litellm-gateway-config-guide.md)（网关 192.168.16.142:4000，实测含 tool calling 验证）
+  - [为 Pi Agent 安装 anthropics/skills 与 obra/superpowers 两套通用技能集（目录技能 + git 包）](devops_ai_agent/20261017-pi-install-anthropic-superpowers-skills.md)（含 `scripts/skills/install_agent_skills.sh`；anthropic 19 个技能落 `~/.agents/skills/`，superpowers 以 git 包安装并含启动引导扩展，规避 GitHub TLS 中断）
   - [Pi 编码 Agent 离线部署（两步法）：通用 Node 运行时包 + Pi 应用包](devops_ai_agent/20261017-pi-offline-bundle-build-deploy-guide.md)（含离线包 `~/.work_linux_working/artifacts/pi-app-offline-1.3.0.tar.gz` 25 MB；第一步 Node 包见 devops_nodejs 分类）
+  - [Pi Agent 批量安装 7 个扩展包：npm ENOTEMPTY、镜像源慢速与 onnxruntime-node 安装脚本失败的排查与修复](devops_ai_agent/20261017-pi-extension-packages-install-troubleshooting.md)（om-memory-system / billion-context / pi-cowboy / pi-mcp-adapter / pi-btw / pi-web-access / pi-subagents；npmmirror 提速 29 倍 + 跳过 install 脚本）
   - [Rowboat（rowboatlabs/rowboat）Linux 便携式部署与使用手册（官方 zip，免 sudo）](devops_ai_agent/20261017-rowboat-linux-portable-deploy-guide.md)（v1.0.5；Linux 无 AppImage，可选 deb/rpm/zip）
   - [Rowboat 便携式离线部署包制作与目标机部署手册（官方 zip + 脱敏配置 + 桌面集成）](devops_ai_agent/20261017-rowboat-offline-bundle-build-deploy-guide.md)（含离线包 `~/.work_linux_working/artifacts/rowboat-offline-1.0.5.tar.gz`，144 MB，配置排除凭据并脱敏）
   - [AionUi（iOfficeAI/AionUi）Linux 部署与使用手册（官方 deb + 免 sudo 解包运行）](devops_ai_agent/20261017-aionui-linux-deploy-guide.md)（v2.2.2；GitHub Release 无二进制，Linux 仅官方 deb）
   - [OpenWork（different-ai/openwork）Linux AppImage 部署与使用手册（含产物归位规范）](devops_ai_agent/20261017-openwork-appimage-deploy-guide.md)（v0.18.58；含 `scripts/devops/electron-desktop-integrate.sh` 通用桌面集成脚本）
   - [anthropics/skills 全部技能依赖的本地化下载与离线包制备（Node.js 24 + Python 3.11/3.12）](devops_ai_agent/20261017-anthropic-skills-deps-offline-download.md)（含 `scripts/skills/download_anthropic_skills_deps.sh` 与 `scripts/skills/deps/` 清单；npm core 318 包 / full 517 包，py311+py312 各 69 个 wheel）
   - [pandoc / tesseract 文档处理 CLI 的「解压即用」离线包制备（内网无源场景）](devops_ai_agent/20261017-doc-tools-offline-bundle-guide.md)（含 `scripts/devops/download_doc_tools_offline.sh`；pandoc 3.12.1 静态二进制 + tesseract 5.5.3 AppImage 解包 + tessdata_fast 语言数据，归档 126 MB）
+  - [Pi 编码 Agent 扩展与技能（extensions/skills）离线打包与部署手册](devops_ai_agent/20261018-pi-extensions-skills-offline-bundle-deploy.md)（含 `scripts/skills/pack_pi_extensions_skills.sh` + `scripts/skills/deploy_pi_extensions_skills.sh`；实测打包 6 扩展 + 120 技能，归档 `~/.work_linux_working/artifacts/pi-extensions-skills-offline-20261018.tar.gz`）
 - **devops_code_analysis**
   - [C/C++ 代码分析工具链：快速部署、接口/业务链扫描与单元测试体系实施方案](devops_code_analysis/20261009-code-analysis-toolchain-deployment-guide.md)（含 `scripts/code_analysis/`：安装、离线打包、接口扫描、静态分析、单测脚手架、覆盖率、业务链追踪、code-review-graph 多语言接口手册、Understand-Anything 业务域图谱、Dockerfile）
   - [Node.js / Java / C++ 自动化测试工具链与离线包清单（Python 3.11 / JDK≥8 / glibc≤2.27）](devops_code_analysis/20261009-nodejs-java-cpp-testing-toolchain-package-list.md)
