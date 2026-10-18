@@ -2,34 +2,42 @@
 # =============================================================================
 # install_rust —— 离线安装（解压 tar.gz 后还原目录树）
 # =============================================================================
-# 离线包结构（由 install_base 的 make_offline_package 生成）：
+# 离线包实际结构（install_base 的 make_offline_package 打包的是绝对路径，
+# 去掉开头的 / 后原样保留）：
 #   rust-stable.tar.gz
-#   ├── cargo/            <- 原 rust_cargo_home 内容
-#   └── rustup/           <- 原 rust_rustup_home 内容
+#   └── opt/rust/
+#       ├── cargo/      <- 原 rust_cargo_home（含 bin/ 代理软链）
+#       └── rustup/     <- 原 rust_rustup_home（含 toolchains/ 真实工具链）
 #
-# 解压后 install_base 已把内容放到 _install_pkg_workdir，
-# 本文件负责把它还原到 rust_prefix，并重建软链与 profile。
+# 注意：兼容两种布局
+#   layout=nested  <workdir>/opt/rust/{cargo,rustup}   ← 当前实际产物
+#   layout=flat    <workdir>/{cargo,rustup}            ← 手工整理的包
 # =============================================================================
 
 - name: "离线 —— 定位解压后的 rust 目录"
   ansible.builtin.shell: |
     set -u
-    # 优先按预期布局查找：<workdir>/cargo/bin/cargo
-    if [ -x "{{ _install_pkg_workdir }}/cargo/bin/cargo" ]; then
-      echo "cargo_dir={{ _install_pkg_workdir }}/cargo"
-      echo "rustup_dir={{ _install_pkg_workdir }}/rustup"
-      echo "layout=nested"
+    W="{{ _install_pkg_workdir }}"
+    # 布局 1：带绝对路径前缀（install_base 默认产物）
+    if [ -x "$W/opt/rust/cargo/bin/rustup" ]; then
+      echo "prefix=$W/opt/rust"
+      echo "layout=absolute"
       exit 0
     fi
-    # 兜底：任意位置的 cargo/bin/cargo
-    C="$(find "{{ _install_pkg_workdir }}" -maxdepth 5 -type f -path '*/cargo/bin/cargo' 2>/dev/null | head -1)"
-    if [ -n "$C" ]; then
-      R="$(dirname "$(dirname "$C")")"
-      echo "cargo_dir=$R"
-      echo "rustup_dir=$(dirname "$R")/rustup"
+    # 布局 2：扁平 cargo/ rustup/
+    if [ -x "$W/cargo/bin/rustup" ]; then
+      echo "prefix=$W"
       echo "layout=flat"
       exit 0
     fi
+    # 兜底：任意位置的 bin/rustup
+    U="$(find "$W" -maxdepth 6 -type f -path '*/cargo/bin/rustup' 2>/dev/null | head -1)"
+    if [ -n "$U" ]; then
+      echo "prefix=$(dirname "$(dirname "$(dirname "$U")")")"
+      echo "layout=found"
+      exit 0
+    fi
+    echo "prefix="
     echo "layout=none"
   args:
     executable: /bin/bash
@@ -41,18 +49,21 @@
     that:
       - "'layout=none' not in _rust_offline_layout.stdout"
     fail_msg: >-
-      离线包内未找到 cargo 可执行文件，包可能不完整。
+      离线包内未找到 cargo/bin/rustup（rustup 代理），包可能不完整。
       解压目录：{{ _install_pkg_workdir }}
     quiet: true
 
-- name: "离线 —— 解析出 cargo / rustup 目录"
+- name: "离线 —— 解析出离线包内的 rust 根目录"
   ansible.builtin.set_fact:
-    _rust_offline_cargo_dir: >-
-      {{ (_rust_offline_layout.stdout | regex_findall('cargo_dir=([^\n]+)') | first
+    _rust_offline_root: >-
+      {{ (_rust_offline_layout.stdout | regex_findall('prefix=([^\n]+)') | first
           | default('', true)) }}
-    _rust_offline_rustup_dir: >-
-      {{ (_rust_offline_layout.stdout | regex_findall('rustup_dir=([^\n]+)') | first
-          | default('', true)) }}
+
+- name: "离线 —— 输出识别到的布局"
+  ansible.builtin.debug:
+    msg: >-
+      {{ (_rust_offline_layout.stdout | regex_findall('layout=([^\n]+)') | first
+          | default('unknown', true)) }} ｜ 根目录 = {{ _rust_offline_root }}
 
 - name: "离线 —— 清空旧前缀（避免残留混装）"
   ansible.builtin.file:
@@ -71,27 +82,21 @@
     - "{{ rust_cargo_home }}"
     - "{{ rust_rustup_home }}"
 
-- name: "离线 —— 搬运 cargo 目录"
+- name: "离线 —— 搬运 cargo 与 rustup 目录"
   ansible.builtin.shell: |
     set -eu
-    cp -a "{{ _rust_offline_cargo_dir }}/." "{{ rust_cargo_home }}/"
-    echo "copied cargo -> {{ rust_cargo_home }}"
+    SRC="{{ _rust_offline_root }}"
+    cp -a "$SRC/cargo/." "{{ rust_cargo_home }}/"
+    cp -a "$SRC/rustup/." "{{ rust_rustup_home }}/"
+    echo "restored: $SRC -> {{ rust_prefix }}"
   args:
     executable: /bin/bash
   changed_when: true
 
-- name: "离线 —— 搬运 rustup 目录"
-  ansible.builtin.shell: |
-    set -eu
-    if [ -d "{{ _rust_offline_rustup_dir }}" ]; then
-      cp -a "{{ _rust_offline_rustup_dir }}/." "{{ rust_rustup_home }}/"
-      echo "copied rustup -> {{ rust_rustup_home }}"
-    else
-      echo "skip: rustup 目录不存在 {{ _rust_offline_rustup_dir }}"
-    fi
-  args:
-    executable: /bin/bash
-  changed_when: true
+- name: "离线 —— 清理下载缓存（rustup/downloads 无用）"
+  ansible.builtin.file:
+    path: "{{ rust_rustup_home }}/downloads"
+    state: absent
 
 - name: "离线 —— 修正属主"
   ansible.builtin.file:
@@ -135,7 +140,7 @@
       - _rust_offline_verify.rc | default(1) == 0
     fail_msg: >-
       离线安装后 cargo 无法运行：
-      stdout={{ _rust_offline_verify.stdout | default('') }}
+      stdout={{ _rust_offline_verify.stdout | default('') }} ｜
       stderr={{ _rust_offline_verify.stderr | default('') }}
     quiet: true
 

@@ -28,6 +28,7 @@
       - pkg-config
     _apt_state: present
     _apt_update: true
+    _apt_cache_time: 3600
 
 # -----------------------------------------------------------------------------
 # 2. 准备目录：RUSTUP_HOME / CARGO_HOME 统一到 rust_prefix 下，便于整树打包
@@ -89,7 +90,7 @@
          ['--default-toolchain', rust_toolchain] +
          ['--profile', rust_profile] +
          (['--default-host', rust_default_host] if rust_default_host | length > 0 else []) }}
-    creates: "{{ rust_cargo_home }}/bin/cargo"
+    creates: "{{ _rust_toolchain_marker }}"
   become: true
   become_user: "{{ rust_user }}"
   environment:
@@ -100,7 +101,7 @@
     RUSTUP_INIT_SKIP_PATH_CHECK: "yes"
     HOME: "{{ ansible_env.HOME | default('/home/' ~ rust_user) }}"
   register: _rust_init_result
-  changed_when: _rust_init_result.rc == 0
+  changed_when: _rust_init_result.rc | default(0) == 0
 
 # -----------------------------------------------------------------------------
 # 5. 额外组件与 target
