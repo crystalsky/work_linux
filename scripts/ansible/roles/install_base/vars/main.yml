@@ -1,0 +1,22 @@
+---
+# 内部常量：不随用户覆盖变动
+install_base_supported_distros:
+  - Debian
+  - Ubuntu
+  - Rocky
+  - AlmaLinux
+  - CentOS
+  - RedHat
+
+install_base_supported_arches:
+  - x86_64
+  - aarch64
+
+# 各发行版的软件包管理器映射
+install_base_pkg_mgr_map:
+  Debian: apt
+  Ubuntu: apt
+  Rocky: dnf
+  AlmaLinux: dnf
+  CentOS: dnf
+  RedHat: dnf

@@ -1,0 +1,17 @@
+# {{ ansible_managed | default('Ansible managed') }}
+# Rust 工具链环境（由 install_rust role 生成）
+export RUSTUP_HOME="{{ rust_rustup_home }}"
+export CARGO_HOME="{{ rust_cargo_home }}"
+{% if rust_dist_server | length > 0 %}
+export RUSTUP_DIST_SERVER="{{ rust_dist_server }}"
+export RUSTUP_UPDATE_ROOT="{{ rust_dist_server }}/rustup"
+{% endif %}
+{% if rust_disable_telemetry | bool %}
+export RUSTUP_TELEMETRY=0
+{% endif %}
+
+# PATH 去重追加
+case ":${PATH}:" in
+  *":{{ rust_cargo_home }}/bin:"*) ;;
+  *) export PATH="{{ rust_cargo_home }}/bin:${PATH}" ;;
+esac

@@ -1,0 +1,9 @@
+---
+- name: 沙箱主机基线收敛
+  hosts: sandbox
+  gather_facts: true
+  roles:
+    - role: common
+      tags: [common]
+    - role: sshd_sandbox
+      tags: [sshd]

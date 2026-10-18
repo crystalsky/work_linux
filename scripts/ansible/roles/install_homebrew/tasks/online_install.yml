@@ -1,0 +1,278 @@
+---
+# =============================================================================
+# install_homebrew —— 在线安装（流程 1）
+# =============================================================================
+# 官方推荐方式：运行 https://github.com/Homebrew/install/raw/HEAD/install.sh
+# 关键约束（已核对官方脚本源码）：
+#   - 必须以非 root 用户运行，NONINTERACTIVE=1 时 sudo 自动带 -n
+#   - HOMEBREW_BREW_GIT_REMOTE / HOMEBREW_CORE_GIT_REMOTE 可覆盖源
+#   - 自定义 prefix 长度不得超过 /home/linuxbrew/.linuxbrew
+#   - Linux 需要 ruby >= 3.4（由 install_ruby role 负责）
+# =============================================================================
+
+# ---------- 1. 依赖校验 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 校验基础依赖包"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.packages is defined or brew_prereq_install
+    fail_msg: "无法确认系统包信息，且 brew_prereq_install=false"
+    quiet: true
+  when: not (brew_prereq_install | bool)
+
+- name: "[{{ install_pkg_name }}] 在线 —— 安装 Homebrew 所需的系统基础包"
+  block:
+    - name: "[{{ install_pkg_name }}] 在线 —— 等待包管理器空闲"
+      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+    - name: "[{{ install_pkg_name }}] 在线 —— 安装基础依赖包"
+      ansible.builtin.apt:
+        name: "{{ brew_apt_prereqs }}"
+        state: present
+        update_cache: true
+        dpkg_options: 'force-confdef,force-confold'
+      become: true
+      register: _brew_prereq_install_result
+  when: brew_prereq_install | bool
+
+# 重新收集包信息，后续版本断言才看得到刚装的包
+- name: "[{{ install_pkg_name }}] 在线 —— 刷新系统包信息"
+  ansible.builtin.package_facts:
+    manager: auto
+  when: _brew_prereq_install_result.changed | default(false)
+
+# ---------- 1.1 基础依赖版本校验 ----------
+# 注意：Debian 包版本常带 epoch 前缀（如 git 的 1:2.47.3-0+deb13u1），
+# 直接交给 is version() 会因 "1:" 前缀而判断异常。
+# 因此这里取实际安装的二进制版本（git --version 输出）只保留 主.次.修订 三段。
+- name: "[{{ install_pkg_name }}] 在线 —— 探测 git / curl 实际版本"
+  ansible.builtin.shell: |
+    set -u
+    for dep in git curl; do
+      if command -v "$dep" >/dev/null 2>&1; then
+        ver=$("$dep" --version 2>/dev/null | head -1 \
+              | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true)
+      else
+        ver=""
+      fi
+      echo "${dep}=${ver:-0}"
+    done
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _brew_dep_versions_raw
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 在线 —— 解析 git / curl 版本"
+  ansible.builtin.set_fact:
+    _brew_git_raw: "{{ _brew_dep_versions_raw.stdout_lines | select('match', '^git=') | first | default('git=0') }}"
+    _brew_curl_raw: "{{ _brew_dep_versions_raw.stdout_lines | select('match', '^curl=') | first | default('curl=0') }}"
+
+- name: "[{{ install_pkg_name }}] 在线 —— 提取版本号"
+  ansible.builtin.set_fact:
+    _brew_git_version: "{{ _brew_git_raw.split('=')[1] }}"
+    _brew_curl_version: "{{ _brew_curl_raw.split('=')[1] }}"
+
+- name: "[{{ install_pkg_name }}] 在线 —— 校验 git / curl 版本"
+  ansible.builtin.assert:
+    that:
+      - _brew_git_version is version(brew_required_git_version, '>=')
+      - _brew_curl_version is version(brew_required_curl_version, '>=')
+    fail_msg: >-
+      Homebrew 要求 git >= {{ brew_required_git_version }}、
+      curl >= {{ brew_required_curl_version }}；当前
+      git={{ _brew_git_version }}、curl={{ _brew_curl_version }}。
+      请先通过系统包管理器升级。
+    success_msg: >-
+      依赖满足：git={{ _brew_git_version }}、curl={{ _brew_curl_version }}
+    quiet: true
+
+# ---------- 2. Ruby 版本校验（由 install_ruby role 负责安装） ----------
+# ruby 未安装时不能直接把 "absent" 丢进 version 测试，否则报
+# "'<' not supported between instances of 'str' and 'int'"。
+# 先归一化为可比较的 "0.0.0"，并把是否已安装单独记录。
+- name: "[{{ install_pkg_name }}] 在线 —— 探测 ruby 版本"
+  ansible.builtin.shell: |
+    set -u
+    if command -v ruby >/dev/null 2>&1; then
+      ruby -e 'print RUBY_VERSION' 2>/dev/null || echo ""
+    fi
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _brew_ruby_probe
+  changed_when: false
+  failed_when: false
+  become: true
+  become_user: "{{ brew_user }}"
+
+- name: "[{{ install_pkg_name }}] 在线 —— 归一化 ruby 版本"
+  ansible.builtin.set_fact:
+    _brew_ruby_present: "{{ _brew_ruby_probe.stdout | trim | length > 0 }}"
+    _brew_ruby_version: >-
+      {{ _brew_ruby_probe.stdout | trim
+         if (_brew_ruby_probe.stdout | trim | length > 0) else '0.0.0' }}
+
+- name: "[{{ install_pkg_name }}] 在线 —— 记录 ruby 版本判定"
+  ansible.builtin.set_fact:
+    _brew_ruby_ok: "{{ _brew_ruby_version is version(brew_required_ruby_version, '>=') }}"
+
+- name: "[{{ install_pkg_name }}] 在线 —— ruby 版本不足时告警"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  ruby 版本不满足 Homebrew 要求（需要 >= {{ brew_required_ruby_version }}）。"
+      - "    当前探测结果：{{ _brew_ruby_probe.stdout | trim | default('未安装') }}"
+      - "    请先运行 install_ruby role 完成 ruby 安装。"
+      - "    brew_enforce_ruby_version={{ brew_enforce_ruby_version }}"
+  when: not (_brew_ruby_ok | bool)
+
+- name: "[{{ install_pkg_name }}] 在线 —— ruby 版本不足时中止"
+  ansible.builtin.fail:
+    msg: >-
+      ruby 版本 {{ _brew_ruby_probe.stdout | trim | default('未安装') }} 不满足
+      Homebrew 要求的 {{ brew_required_ruby_version }}。请先执行 install_ruby role。
+  when:
+    - not (_brew_ruby_ok | bool)
+    - brew_enforce_ruby_version | bool
+
+# ---------- 3. 创建 linuxbrew 组与安装目录 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 创建 linuxbrew 组"
+  ansible.builtin.group:
+    name: "{{ brew_group }}"
+    state: present
+  become: true
+  register: _brew_group_result
+
+- name: "[{{ install_pkg_name }}] 在线 —— 将安装用户加入 linuxbrew 组"
+  ansible.builtin.user:
+    name: "{{ brew_user }}"
+    groups: "{{ brew_group }}"
+    append: true
+  become: true
+  register: _brew_user_result
+
+- name: "[{{ install_pkg_name }}] 在线 —— 创建安装前缀目录"
+  ansible.builtin.file:
+    path: "{{ brew_prefix }}"
+    state: directory
+    owner: "{{ brew_user }}"
+    group: "{{ brew_group }}"
+    mode: "0775"
+  become: true
+
+# ---------- 4. 获取官方 install.sh ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 下载官方安装脚本"
+  ansible.builtin.get_url:
+    url: "{{ _brew_install_script_effective_url }}"
+    dest: "{{ install_base_staging_dir }}/brew_install.sh"
+    mode: "0755"
+    timeout: 60
+  become: true
+  register: _brew_script_download
+  retries: 3
+  delay: 5
+  until: _brew_script_download is succeeded
+
+# ---------- 5. 执行安装 ----------
+# 关键：以 brew_user 身份、非交互、源可覆盖
+- name: "[{{ install_pkg_name }}] 在线 —— 执行 Homebrew 官方安装脚本"
+  ansible.builtin.command:
+    cmd: >-
+      /bin/bash {{ install_base_staging_dir }}/brew_install.sh
+      --path={{ brew_prefix }}
+  args:
+    chdir: /tmp
+  environment:
+    NONINTERACTIVE: "1"
+    CI: "1"
+    HOMEBREW_BREW_GIT_REMOTE: "{{ brew_git_remote }}"
+    HOMEBREW_CORE_GIT_REMOTE: "{{ brew_core_git_remote }}"
+    HOMEBREW_NO_ANALYTICS: "1"
+    HOMEBREW_NO_AUTO_UPDATE: "1"
+    HOME: "/home/{{ brew_user }}"
+  become: true
+  become_user: "{{ brew_user }}"
+  register: _brew_install_result
+  changed_when: true
+
+- name: "[{{ install_pkg_name }}] 在线 —— 输出安装结果摘要"
+  ansible.builtin.debug:
+    msg: "{{ _brew_install_result.stdout_lines | default([]) | select('match', '^==>|Warning') | list }}"
+
+# ---------- 6. 写入运行期环境变量 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 生成 brew 环境变量配置文件"
+  ansible.builtin.template:
+    src: brew.sh.j2
+    dest: "{{ brew_profile_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  become: true
+  register: _brew_profile_result
+
+- name: "[{{ install_pkg_name }}] 在线 —— 环境变量文件已存在时保持不变"
+  ansible.builtin.debug:
+    msg:
+      - "ℹ️  {{ brew_profile_file }} 已存在，未做修改（force=false）。"
+      - "    如需按当前变量重写，请先手工删除该文件或设置 install_force=true。"
+  when:
+    - _brew_profile_result is defined
+    - not (_brew_profile_result.changed | default(false))
+
+# ---------- 7. 安装后校验 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 校验 brew 可执行"
+  ansible.builtin.command:
+    cmd: "{{ brew_prefix }}/bin/brew --version"
+  args:
+    chdir: /tmp
+  environment:
+    HOME: "/home/{{ brew_user }}"
+    HOMEBREW_NO_ANALYTICS: "1"
+  become: true
+  become_user: "{{ brew_user }}"
+  register: _brew_version_check
+  changed_when: false
+  failed_when: _brew_version_check.rc != 0
+
+# 从 "Homebrew 7.0.9" 中提取真实版本号。
+# 状态标记必须记录实际安装的版本，而不是期望值，
+# 否则后续版本漂移检测会失效。
+# 用 regex_findall 而非 regex_search：后者无匹配时返回 None，
+# 而 None | first 会报 'NoneType' object is not iterable。
+- name: "[{{ install_pkg_name }}] 在线 —— 提取版本行"
+  ansible.builtin.set_fact:
+    _brew_version_line: "{{ _brew_version_check.stdout_lines | first | default('', true) }}"
+
+- name: "[{{ install_pkg_name }}] 在线 —— 记录实际安装版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ ((_brew_version_line | regex_findall('[0-9]+\.[0-9]+\.[0-9]+'))
+          | first | default(install_pkg_version, true)) }}
+
+
+- name: "[{{ install_pkg_name }}] 在线 —— 输出 brew 版本"
+  ansible.builtin.debug:
+    msg:
+      - "✅ Homebrew 安装成功：{{ _brew_version_check.stdout_lines | first | default('?') }}"
+      - "   实际版本={{ install_pkg_version_actual }}（期望 {{ install_pkg_version }}）"
+
+- name: "[{{ install_pkg_name }}] 在线 —— 可选执行 brew doctor"
+  ansible.builtin.command:
+    cmd: "{{ brew_prefix }}/bin/brew doctor"
+  args:
+    chdir: /tmp
+  environment:
+    HOME: "/home/{{ brew_user }}"
+    HOMEBREW_NO_ANALYTICS: "1"
+  become: true
+  become_user: "{{ brew_user }}"
+  register: _brew_doctor
+  changed_when: false
+  failed_when: false
+  when: brew_run_doctor | bool
+
+- name: "[{{ install_pkg_name }}] 在线 —— brew doctor 结果"
+  ansible.builtin.debug:
+    msg: "{{ _brew_doctor.stdout_lines | default([]) }}"
+  when: brew_run_doctor | bool

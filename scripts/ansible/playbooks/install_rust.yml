@@ -1,0 +1,51 @@
+---
+# =============================================================================
+# Rust 工具链安装 —— Ubuntu 20.04 沙箱
+# =============================================================================
+# 用法：
+#   # 在线安装（默认 stable）
+#   uv run ansible-playbook playbooks/install_rust.yml
+#
+#   # 在线安装并指定版本
+#   uv run ansible-playbook playbooks/install_rust.yml -e rust_toolchain=1.82.0
+#
+#   # 制作离线包（先确保在线安装成功）
+#   uv run ansible-playbook playbooks/install_rust.yml -e make_offline_package=true
+#
+#   # 离线安装（离线包已在 /workspace 下）
+#   uv run ansible-playbook playbooks/install_rust.yml \
+#     -e install_mode=offline \
+#     -e offline_package_path=/workspace/rust-stable.tar.gz
+# =============================================================================
+- name: "安装 Rust 工具链（双模式）"
+  hosts: ubuntu2004_sandbox
+  gather_facts: true
+
+  vars:
+    # --- 双模式控制 ---------------------------------------------------------
+    install_mode: online
+    make_offline_package: false
+
+    # --- Rust 版本与组件 ----------------------------------------------------
+    # Ubuntu 20.04 仓库上限为 rustc 1.75.0，这里走 rustup 官方分发，
+    # 实测官方 1.99.1 prebuilt 在 glibc 2.31 上可直接运行。
+    install_pkg_version: "stable"
+    rust_toolchain: "{{ install_pkg_version }}"
+    rust_profile: minimal
+
+    # --- 安装位置 -----------------------------------------------------------
+    rust_prefix: /opt/rust
+    rust_cargo_home: "{{ rust_prefix }}/cargo"
+    rust_rustup_home: "{{ rust_prefix }}/rustup"
+    rust_user: "{{ ansible_user }}"
+    rust_group: "{{ ansible_user }}"
+
+    # --- 分发源（国内镜像）--------------------------------------------------
+    rust_dist_server: "https://mirrors.tuna.tsinghua.edu.cn/rustup"
+
+    # --- 校验 ---------------------------------------------------------------
+    rust_verify: true
+    rust_enforce_version: false
+
+  roles:
+    - install_rust

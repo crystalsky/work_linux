@@ -1,0 +1,37 @@
+---
+# 连通性与提权冒烟测试，不修改目标主机
+- name: 沙箱连通性验证
+  hosts: sandbox
+  gather_facts: true
+  tasks:
+    - name: 显示目标主机基础信息
+      ansible.builtin.debug:
+        msg:
+          - "主机: {{ inventory_hostname }}"
+          - "系统: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "内核: {{ ansible_kernel }}"
+          - "Python: {{ ansible_python_version }}"
+          - "提权用户: {{ ansible_user_id }}"
+
+    - name: 验证免密提权
+      ansible.builtin.command: whoami
+      become: true
+      changed_when: false
+      register: become_check
+
+    - name: 断言提权为 root
+      ansible.builtin.assert:
+        that:
+          - become_check.stdout == 'root'
+        success_msg: "免密提权正常，Ansible 可接管装包"
+        fail_msg: "提权失败，输出为 {{ become_check.stdout }}"
+
+    - name: 检查 uv 是否可用
+      ansible.builtin.command: uv --version
+      changed_when: false
+      register: uv_check
+      failed_when: false
+
+    - name: 输出 uv 版本
+      ansible.builtin.debug:
+        msg: "uv: {{ uv_check.stdout | default('未安装') }}"

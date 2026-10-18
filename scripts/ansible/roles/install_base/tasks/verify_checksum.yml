@@ -1,0 +1,104 @@
+---
+# =============================================================================
+# 完整性校验 —— 支持 sha256（推荐）与 md5（兜底）
+# =============================================================================
+# 校验值来源优先级：
+#   1. offline_package_checksum（显式声明）
+#   2. <包路径>.sha256 / <包路径>.md5（同名校验文件）
+# 两者都没有：
+#   - install_base_allow_no_checksum=false（默认）-> 失败
+#   - install_base_allow_no_checksum=true          -> 打警告放行
+#
+# 产出：_install_checksum_verified = true
+# =============================================================================
+
+- name: 校验 —— 初始化结果标记
+  ansible.builtin.set_fact:
+    _install_checksum_verified: false
+    _install_checksum_expected: ""
+  tags: [install_base]
+
+# ---------- 来源 1：显式声明的校验值 ----------
+- name: 校验 —— 使用显式声明的校验值
+  ansible.builtin.set_fact:
+    _install_checksum_expected: "{{ offline_package_checksum }}"
+  when:
+    - offline_package_checksum is defined
+    - offline_package_checksum | length > 0
+
+# ---------- 来源 2：同名校验文件 ----------
+- name: 校验 —— 查找同名校验文件
+  ansible.builtin.stat:
+    path: "{{ _install_pkg_local_file }}.{{ install_base_checksum_algo }}"
+  register: _install_checksum_file_stat
+  when: _install_checksum_expected | length == 0
+
+- name: 校验 —— 从校验文件读取期望值
+  ansible.builtin.shell: >-
+    awk '{print $1}' "{{ _install_pkg_local_file }}.{{ install_base_checksum_algo }}" | head -1
+  args:
+    chdir: /tmp
+  register: _install_checksum_file_read
+  changed_when: false
+  when:
+    - _install_checksum_expected | length == 0
+    - _install_checksum_file_stat.stat.exists | default(false)
+
+- name: 校验 —— 记录校验文件中的期望值
+  ansible.builtin.set_fact:
+    _install_checksum_expected: "{{ _install_checksum_file_read.stdout | trim }}"
+  when:
+    - _install_checksum_expected | length == 0
+    - _install_checksum_file_stat.stat.exists | default(false)
+
+# ---------- 无校验值可用时的处理 ----------
+- name: 校验 —— 无任何校验值时告警
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  {{ install_pkg_name }} 离线包没有可用的 {{ install_base_checksum_algo }} 校验值。"
+      - "    包路径：{{ _install_pkg_local_file }}"
+      - "    install_base_allow_no_checksum={{ install_base_allow_no_checksum }}"
+  when: _install_checksum_expected | length == 0
+
+- name: 校验 —— 无校验值且未允许放行则失败
+  ansible.builtin.fail:
+    msg: >-
+      离线包 {{ _install_pkg_local_file }} 缺少 {{ install_base_checksum_algo }} 校验值。
+      请提供 offline_package_checksum 或同名 .{{ install_base_checksum_algo }} 文件；
+      确认可信时可将 install_base_allow_no_checksum 设为 true。
+  when:
+    - _install_checksum_expected | length == 0
+    - not (install_base_allow_no_checksum | bool)
+
+# ---------- 执行校验 ----------
+- name: 校验 —— 计算并比对校验值
+  ansible.builtin.stat:
+    path: "{{ _install_pkg_local_file }}"
+    checksum_algorithm: "{{ install_base_checksum_algo }}"
+    get_checksum: true
+  register: _install_pkg_checksum_stat
+  when: _install_checksum_expected | length > 0
+
+- name: 校验 —— 校验值不匹配则失败
+  ansible.builtin.fail:
+    msg: |-
+      离线包校验失败，安装中止（防止安装被篡改或损坏的包）。
+        包路径   : {{ _install_pkg_local_file }}
+        算法     : {{ install_base_checksum_algo }}
+        期望值   : {{ _install_checksum_expected }}
+        实际值   : {{ _install_pkg_checksum_stat.stat.checksum }}
+  when:
+    - _install_checksum_expected | length > 0
+    - _install_pkg_checksum_stat.stat.checksum != _install_checksum_expected
+
+- name: 校验 —— 标记校验通过
+  ansible.builtin.set_fact:
+    _install_checksum_verified: true
+  when:
+    - _install_checksum_expected | length == 0
+      or _install_pkg_checksum_stat.stat.checksum == _install_checksum_expected
+
+- name: 校验 —— md5 算法提示
+  ansible.builtin.debug:
+    msg: "⚠️  当前使用 md5 校验，仅能防意外损坏，无法防篡改。建议改用 sha256。"
+  when: install_base_checksum_algo == 'md5'

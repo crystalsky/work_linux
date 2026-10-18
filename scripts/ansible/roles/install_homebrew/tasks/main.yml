@@ -1,0 +1,20 @@
+---
+# =============================================================================
+# install_homebrew —— 入口
+# =============================================================================
+# 全部流程交给 install_base 的 orchestrate.yml 编排：
+#   契约校验 -> 状态探测 -> 决策 -> 执行
+# 本 role 只提供「这个软件特有的」三个片段：
+#   online_install.yml   在线安装
+#   offline_apply.yml    离线包应用
+#   依赖校验（见 online_install.yml 内）
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 引入安装基座"
+  ansible.builtin.import_role:
+    name: install_base
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 执行通用编排"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/orchestrate.yml"
+  tags: [install_pkg]

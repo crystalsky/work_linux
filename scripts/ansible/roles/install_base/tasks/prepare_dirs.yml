@@ -1,0 +1,38 @@
+---
+# =============================================================================
+# 创建安装体系所需的目录（全部幂等）
+# =============================================================================
+# - install_base_state_dir   : 每包状态标记
+# - install_base_cache_dir   : 离线包缓存
+# - install_base_staging_dir : 解压/构建临时目录（每次安装前清空）
+# =============================================================================
+
+- name: 创建状态标记目录
+  ansible.builtin.file:
+    path: "{{ install_base_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags: [install_base]
+
+- name: 创建离线包缓存目录
+  ansible.builtin.file:
+    path: "{{ install_base_cache_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags: [install_base]
+
+- name: 创建临时暂存目录
+  ansible.builtin.file:
+    path: "{{ install_base_staging_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags: [install_base]

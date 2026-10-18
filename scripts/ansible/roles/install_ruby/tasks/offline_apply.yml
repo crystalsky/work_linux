@@ -1,0 +1,206 @@
+---
+# =============================================================================
+# install_ruby —— 离线落地
+# =============================================================================
+# install_base 已完成的步骤：
+#   fetch_package   -> 离线包落到 install_base_cache_dir
+#   verify_checksum -> 校验 sha256
+#   extract_package -> 解压到 install_base_staging_dir/extract
+#
+# 本片段负责把解压出来的内容装进系统。两种形态：
+#
+#   deb  形态：包内是 ruby_deb_download_dir 的目录树（含若干 .deb）
+#             -> dpkg -i 安装，依赖已随包下载，无需联网
+#   tree 形态：包内是 ruby_prefix 目录树（source 模式产物）
+#             -> mv 到 ruby_prefix，再建符号链接
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 离线 —— 判定包内形态"
+  ansible.builtin.shell: |
+    set -u
+    base="{{ _install_pkg_extract_dir }}"
+    deb_count="$(find "$base" -maxdepth 4 -type f -name '*.deb' 2>/dev/null | wc -l)"
+    ruby_bin_count="$(find "$base" -maxdepth 5 -type f -name 'ruby' -path '*/bin/*' 2>/dev/null | wc -l)"
+    echo "deb_count=$deb_count"
+    echo "ruby_bin_count=$ruby_bin_count"
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _ruby_offline_probe
+  changed_when: false
+  become: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录包内形态"
+  ansible.builtin.set_fact:
+    _ruby_offline_deb_count: >-
+      {{ _ruby_offline_probe.stdout | regex_findall('deb_count=(\d+)') | first | default('0', true) }}
+    _ruby_offline_tree_count: >-
+      {{ _ruby_offline_probe.stdout | regex_findall('ruby_bin_count=(\d+)') | first | default('0', true) }}
+
+- name: "[{{ install_pkg_name }}] 离线 —— 形态判定结果"
+  ansible.builtin.debug:
+    msg:
+      - "包内 .deb 数量：{{ _ruby_offline_deb_count }}"
+      - "包内 bin/ruby 数量：{{ _ruby_offline_tree_count }}"
+      - >-
+        {% if (_ruby_offline_deb_count | int) > 0 %}判定为 deb 形态
+        {% elif (_ruby_offline_tree_count | int) > 0 %}判定为 tree 形态
+        {% else %}⚠️ 未识别出可安装内容{% endif %}
+
+- name: "[{{ install_pkg_name }}] 离线 —— 包内容无法识别"
+  ansible.builtin.fail:
+    msg: >-
+      离线包 {{ _install_pkg_local_file }} 解压后既没有 *.deb，也没有 */bin/ruby。
+      请确认打包时 ruby_offline_format 与实际安装方式一致
+      （apt 模式打包 deb，source 模式打包 tree）。
+  when:
+    - (_ruby_offline_deb_count | int) == 0
+    - (_ruby_offline_tree_count | int) == 0
+
+# ---------- deb 形态 ----------
+- name: "[{{ install_pkg_name }}] 离线 —— dpkg 安装 .deb 集合"
+  when: (_ruby_offline_deb_count | int) > 0
+  block:
+    - name: "[{{ install_pkg_name }}] deb —— 等待包管理器空闲"
+      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+    - name: "[{{ install_pkg_name }}] deb —— 列出待安装包"
+      ansible.builtin.shell: |
+        set -u
+        find "{{ _install_pkg_extract_dir }}" -maxdepth 4 -type f -name '*.deb' | sort
+      args:
+        executable: /bin/bash
+        chdir: /tmp
+      register: _ruby_deb_files
+      changed_when: false
+      become: true
+
+    - name: "[{{ install_pkg_name }}] deb —— dpkg -i 安装"
+      ansible.builtin.shell: |
+        set -uo pipefail
+        find "{{ _install_pkg_extract_dir }}" -maxdepth 4 -type f -name '*.deb' -print0 \
+          | sort -z \
+          | xargs -0 -r dpkg -i --force-confdef --force-confold
+      args:
+        executable: /bin/bash
+        chdir: /tmp
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      become: true
+      register: _ruby_dpkg_install
+      changed_when: _ruby_dpkg_install.rc == 0
+      failed_when: false
+
+    - name: "[{{ install_pkg_name }}] deb —— 补齐未完成配置"
+      ansible.builtin.command:
+        cmd: dpkg --configure -a
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      become: true
+      register: _ruby_dpkg_configure
+      changed_when: _ruby_dpkg_configure.rc == 0
+      failed_when: false
+
+    - name: "[{{ install_pkg_name }}] deb —— 安装结果判定"
+      ansible.builtin.fail:
+        msg: |
+          dpkg 安装失败（dpkg 退出码 {{ _ruby_dpkg_install.rc }}）。
+          --- dpkg 输出 ---
+          {{ _ruby_dpkg_install.stdout | default('') }}
+          {{ _ruby_dpkg_install.stderr | default('') }}
+          --- dpkg --configure -a 输出 ---
+          {{ _ruby_dpkg_configure.stdout | default('') }}
+          {{ _ruby_dpkg_configure.stderr | default('') }}
+      when: (_ruby_dpkg_install.rc | int) != 0
+
+# ---------- tree 形态 ----------
+- name: "[{{ install_pkg_name }}] 离线 —— 部署目录树到前缀"
+  when: (_ruby_offline_tree_count | int) > 0
+  block:
+    - name: "[{{ install_pkg_name }}] tree —— 定位包内 ruby 前缀"
+      ansible.builtin.shell: |
+        set -u
+        find "{{ _install_pkg_extract_dir }}" -maxdepth 5 -type f -name ruby -path '*/bin/*' \
+          | head -1 | sed 's#/bin/ruby$##'
+      args:
+        executable: /bin/bash
+        chdir: /tmp
+      register: _ruby_offline_src
+      changed_when: false
+      become: true
+
+    - name: "[{{ install_pkg_name }}] tree —— 记录包内前缀路径"
+      ansible.builtin.set_fact:
+        _ruby_offline_prefix: "{{ _ruby_offline_src.stdout | trim }}"
+
+    - name: "[{{ install_pkg_name }}] tree —— 校验包内前缀有效"
+      ansible.builtin.assert:
+        that:
+          - _ruby_offline_prefix | length > 0
+          - _ruby_offline_prefix != ruby_prefix
+        fail_msg: "包内 ruby 前缀定位失败（得到 '{{ _ruby_offline_prefix }}'）"
+        quiet: true
+
+    - name: "[{{ install_pkg_name }}] tree —— 部署到 ruby_prefix"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        src="{{ _ruby_offline_prefix }}"
+        dst="{{ ruby_prefix }}"
+        if [ -d "$dst" ] && [ -x "$dst/bin/ruby" ]; then
+          echo "目标已存在，先清理：$dst"
+          rm -rf "$dst"
+        fi
+        mkdir -p "$(dirname "$dst")"
+        mv "$src" "$dst"
+        chmod -R u+rwX,go+rX "$dst"
+        echo "DEPLOYED_TO=$dst"
+      args:
+        executable: /bin/bash
+        chdir: /tmp
+        creates: "{{ ruby_prefix }}/bin/ruby"
+      become: true
+
+    - name: "[{{ install_pkg_name }}] tree —— 暴露命令到 PATH"
+      ansible.builtin.file:
+        src: "{{ ruby_prefix }}/bin/{{ item }}"
+        dest: "{{ ruby_bin_link_dir }}/{{ item }}"
+        state: link
+        force: true
+      loop:
+        - ruby
+        - gem
+        - irb
+        - rake
+        - bundle
+        - bundler
+      become: true
+      failed_when: false
+
+# ---------- 安装后校验 ----------
+- name: "[{{ install_pkg_name }}] 离线 —— 刷新命令缓存"
+  ansible.builtin.command:
+    cmd: hash -r
+  args:
+    executable: /bin/bash
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 校验 ruby 可用"
+  ansible.builtin.shell: |
+    set -u
+    command -v ruby >/dev/null 2>&1 || { echo "未找到 ruby 命令" >&2; exit 1; }
+    ruby -e 'print RUBY_VERSION'
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _ruby_offline_check
+  changed_when: false
+  become: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录实际安装版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: "{{ _ruby_offline_check.stdout | trim }}"
+
+- name: "[{{ install_pkg_name }}] 离线 —— 输出结果"
+  ansible.builtin.debug:
+    msg: "✅ Ruby 离线安装完成：{{ install_pkg_version_actual }}"

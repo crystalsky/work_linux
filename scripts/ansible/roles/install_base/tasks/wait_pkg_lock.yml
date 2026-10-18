@@ -1,0 +1,58 @@
+---
+# =============================================================================
+# 等待包管理器空闲 —— 避免与系统自动更新（unattended-upgrades）抢锁失败
+# =============================================================================
+# 场景：Debian/Ubuntu 的 unattended-upgrades 会在任意时刻持有 dpkg 锁，
+# 此时 apt 会输出
+#   E: Unable to acquire the dpkg frontend lock ...
+# 而 Ansible 的 apt 模块默认不会无限等锁，直接失败。
+#
+# 正确做法不是加重试去"抢"，而是先确认锁已释放再进入安装动作，
+# 同时让 apt 自己带 DPkg::Lock::Timeout。
+#
+# 由 role 在调用 apt 之前 include 本片段。
+# =============================================================================
+
+- name: 等待 —— 检查包管理器锁是否被占用
+  ansible.builtin.shell: |
+    set -uo pipefail
+    for lock in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock; do
+      if [ -e "$lock" ] && fuser "$lock" >/dev/null 2>&1; then
+        echo "busy:$lock"
+        exit 0
+      fi
+    done
+    echo "free"
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _pkg_mgr_lock_state
+  changed_when: false
+  failed_when: false
+  become: true
+  tags: [install_base]
+
+- name: 等待 —— 最多等待 {{ install_base_pkg_lock_wait | default(300) }} 秒
+  ansible.builtin.shell: |
+    set -uo pipefail
+    deadline=$(( $(date +%s) + {{ install_base_pkg_lock_wait | default(300) }} ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      busy=0
+      for lock in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock; do
+        if [ -e "$lock" ] && fuser "$lock" >/dev/null 2>&1; then busy=1; break; fi
+      done
+      if [ "$busy" -eq 0 ]; then
+        echo "包管理器已空闲"
+        exit 0
+      fi
+      sleep 5
+    done
+    echo "等待超时：包管理器锁仍被占用" >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  register: _pkg_mgr_wait_result
+  changed_when: false
+  become: true
+  when: "'busy' in (_pkg_mgr_lock_state.stdout | default(''))"
+  tags: [install_base]

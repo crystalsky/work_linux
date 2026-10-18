@@ -1,0 +1,90 @@
+---
+# =============================================================================
+# install_base —— 在线 / 离线双模式安装基座
+# =============================================================================
+# 本 role 只提供「可被 include 的公共任务片段」与「统一变量契约」，
+# 不实现任何具体软件的安装逻辑。各 install_<pkg> role 通过
+#   include_tasks: "{{ install_base_tasks_dir }}/xxx.yml"
+# 复用这里的流程，避免十个软件抄十份取包/校验/解压代码。
+# =============================================================================
+
+# ---------- 安装模式 ----------
+# online  : 使用软件官方推荐的在线安装方式
+# offline : 使用预先制作好的离线 tar.gz 包安装
+install_mode: online
+
+# 逐包覆盖（策略 2，默认不启用；启用后优先级高于 install_mode）
+# install_mode_overrides:
+#   install_ruby: online
+install_mode_overrides: {}
+
+# 离线包缺失时是否降级为在线安装（策略 3，默认关闭）
+# 生产环境请保持 false：静默降级会让「离线可控」的假设失效
+install_offline_fallback_online: false
+
+# ---------- 原子化决策开关 ----------
+# 全部默认 false = 一旦探测到目标已存在，绝不主动修改任何文件
+install_force: false            # true = 无视现有状态，强制全量重装
+install_repair_drift: false     # 配置漂移（内容不符）时是否修正
+install_repair_partial: false   # 安装不完整（缺配置）时是否补齐
+
+# ---------- 状态标记 ----------
+# 每个包安装成功后写入 <dir>/<pkg>.json，用于快速探测与排障
+install_base_state_dir: /var/lib/ansible-install-state
+install_base_write_state: true
+
+# ---------- 目录约定 ----------
+# 离线包缓存/落盘目录（跨包共享）
+install_base_cache_dir: /opt/offline_packages
+# 解压与构建临时目录（可清理，不放持久目录）
+install_base_staging_dir: /tmp/ansible-pkg
+# 离线包制作产物在控制端的落盘目录
+install_base_artifact_dir: "{{ lookup('env', 'HOME') }}/.work_linux_working/artifacts/offline_pkgs"
+
+# ---------- 校验 ----------
+# 校验算法：sha256（推荐）| md5
+install_base_checksum_algo: sha256
+# 无校验文件时是否放行。默认 false = 直接失败，避免安装被篡改的包
+install_base_allow_no_checksum: false
+
+# ---------- 分发 ----------
+# sftp  : 上传到远端 SFTP 服务器
+# local : 拷贝到本地共享目录
+offline_distribute_method: local
+offline_distribute_enabled: false
+
+sftp_host: ""
+sftp_user: ""
+sftp_path: /data/offline
+sftp_port: 22
+sftp_password: ""
+
+local_dist_dir: /mnt/share/offline
+
+# ---------- 包管理器 ----------
+# 国内镜像源：在线安装时避免慢速拉包
+# 境外环境或已自建源时请关掉
+install_base_apt_mirror_enabled: true
+install_base_apt_mirror_url: https://mirrors.tuna.tsinghua.edu.cn/debian
+install_base_apt_security_mirror_url: https://mirrors.tuna.tsinghua.edu.cn/debian-security
+
+# 等锁超时（秒）：避开 unattended-upgrades 等进程持锁导致的安装失败
+install_base_pkg_lock_wait: 300
+# 传给 apt 的锁等待时间，双保险
+install_base_apt_lock_timeout: 120
+
+# ---------- 任务片段目录 ----------
+# 供各 install_<pkg> role include_tasks 使用
+install_base_tasks_dir: "{{ role_path }}/../install_base/tasks"
+
+# ---------- 内部运行时变量（请勿手工设置） ----------
+_install_pkg_workdir: "{{ install_base_staging_dir }}/{{ install_pkg_name }}"
+_install_pkg_extract_dir: "{{ _install_pkg_workdir }}/extract"
+_install_pkg_local_file: "{{ install_base_cache_dir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
+_install_pkg_state_file: "{{ install_base_state_dir }}/{{ install_pkg_name }}.json"
+
+# 由各软件 role 在自己的 defaults 里覆盖（指向 role_path 下的任务文件）
+# 例：_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
+_install_online_tasks: ""
+# 打包前的产物准备（ apt 类 role 用于收集 .deb 等）；留空则跳过
+_install_prepack_tasks: ""

@@ -1,0 +1,95 @@
+---
+# =============================================================================
+# install_homebrew —— 默认变量
+# =============================================================================
+
+# ---------- 契约变量（install_base 要求） ----------
+install_pkg_name: homebrew
+install_pkg_version: "4.5.4"
+
+# ---------- 安装位置 ----------
+# 官方 Linux 默认前缀，支持多用户共享（在此路径下 brew 会 chgrp 给 linuxbrew 组）
+brew_prefix: /home/linuxbrew/.linuxbrew
+brew_repository: "{{ brew_prefix }}/Homebrew"
+
+# Linuxbrew 运行所使用的普通用户（brew 拒绝以 root 身份运行）
+brew_user: "{{ ansible_user | default('test') }}"
+brew_group: linuxbrew
+
+# ---------- 安装脚本来源 ----------
+brew_install_script_url: >-
+  https://github.com/Homebrew/install/raw/HEAD/install.sh
+brew_install_script_checksum: ""
+
+# ---------- GitHub 加速前缀（国内网络必需） ----------
+# github.com 在国内常直连超时（实测 SSL: UNEXPECTED_EOF_WHILE_READING）。
+# 设为非空字符串时，所有 github.com 下载地址前会自动拼接该前缀，例如：
+#   brew_github_proxy: "https://gh-proxy.com/"
+#   -> https://gh-proxy.com/https://github.com/Homebrew/install/raw/HEAD/install.sh
+# 实测可用：https://gh-proxy.com/（直接 200）。
+# 能直连 GitHub 的网络环境请置空。
+brew_github_proxy: "https://gh-proxy.com/"
+
+# 拼接前缀后的实际下载地址（内部派生，勿手动改）
+_brew_install_script_effective_url: >-
+  {{ (brew_github_proxy ~ brew_install_script_url)
+     if (brew_github_proxy | length > 0)
+     else brew_install_script_url }}
+
+# ---------- brew 源（安装期与运行期共用） ----------
+# 安装期通过 HOMEBREW_BREW_GIT_REMOTE / HOMEBREW_CORE_GIT_REMOTE 传给 install.sh
+# 运行期写入 /etc/profile.d/brew.sh 持久生效
+brew_git_remote: https://github.com/Homebrew/brew
+brew_core_git_remote: https://github.com/Homebrew/homebrew-core
+
+# ---------- 运行期环境变量（写入 /etc/profile.d/brew.sh） ----------
+# 离线部署时把这些指向自建 HTTP 服务即可
+brew_runtime_env:
+  HOMEBREW_BREW_GIT_REMOTE: "{{ brew_git_remote }}"
+  HOMEBREW_CORE_GIT_REMOTE: "{{ brew_core_git_remote }}"
+  HOMEBREW_API_DOMAIN: ""
+  HOMEBREW_BOTTLE_DOMAIN: ""
+  HOMEBREW_INSTALL_FROM_API: ""
+  HOMEBREW_NO_ANALYTICS: "1"
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_ENV_HINTS: "1"
+
+brew_profile_file: /etc/profile.d/brew.sh
+
+# ---------- 前置依赖要求（由其他 role 保证，此处仅校验） ----------
+brew_required_git_version: "2.7.0"
+brew_required_curl_version: "7.41.0"
+brew_required_ruby_version: "3.4"
+brew_prereq_install: true   # 卸载 apt 缺失的基础包（git/curl），不处理 ruby
+
+brew_apt_prereqs:
+  - git
+  - curl
+  - ca-certificates
+  - build-essential
+  - procps
+  - file
+  - wget
+
+# ---------- 离线包 ----------
+# 离线包的来源，由 playbook / group_vars 传入
+offline_package_path: ""
+offline_package_url: ""
+offline_package_checksum: ""
+
+# ---------- Homebrew 离线包结构 ----------
+# 包内顶层目录名
+brew_pkg_root: homebrew
+
+# ---------- 行为开关 ----------
+# 无 ruby 3.4 时是否中止（false 时仅警告，便于先跑通骨架）
+brew_enforce_ruby_version: false
+
+# 安装完成后是否执行 brew doctor（噪声大，默认关闭）
+brew_run_doctor: false
+
+# ---------- install_base 钩子 ----------
+# install_base 的 run.yml 通过这两个变量定位本 role 的任务片段
+_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
+# brew 的产物本身就是一个目录树，无需额外收集，留空即跳过
+_install_prepack_tasks: ""

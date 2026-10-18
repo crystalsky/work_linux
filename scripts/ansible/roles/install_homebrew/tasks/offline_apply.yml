@@ -1,0 +1,104 @@
+---
+# =============================================================================
+# install_homebrew —— 离线包应用（流程 3 的软件相关部分）
+# =============================================================================
+# 进入本片段时，install_base 已完成：
+#   取包 -> sha256 校验 -> 解压到 _install_pkg_extract_dir
+# 本片段负责：
+#   1. 恢复 linuxbrew 组与安装用户归属
+#   2. 将解压出的 brew 前缀目录搬到 /home/linuxbrew/.linuxbrew
+#   3. 写入运行期环境变量文件
+#   4. 校验 brew 可用
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 离线 —— 定位解压后的产物目录"
+  ansible.builtin.find:
+    paths: "{{ _install_pkg_extract_dir }}"
+    patterns: "bin"
+    file_type: directory
+    recurse: true
+    depth: 3
+  register: _brew_offline_bin_dirs
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录 brew 前缀来源目录"
+  ansible.builtin.set_fact:
+    _brew_offline_src: >-
+      {{ _brew_offline_bin_dirs.files
+         | map(attribute='path') | map('dirname')
+         | select('search', 'linuxbrew|\\.linuxbrew|Homebrew')
+         | list | first | default('') }}
+  when: _brew_offline_bin_dirs.files | length > 0
+
+- name: "[{{ install_pkg_name }}] 离线 —— 未找到 brew 前缀目录则失败"
+  ansible.builtin.fail:
+    msg: >-
+      离线包内未找到 Homebrew 前缀目录（含 bin/ 的 linuxbrew 目录）。
+      请确认包是由 make_offline_package 正确生成。
+  when: _brew_offline_src | default('') | length == 0
+
+- name: "[{{ install_pkg_name }}] 离线 —— 创建 linuxbrew 组"
+  ansible.builtin.group:
+    name: "{{ brew_group }}"
+    state: present
+  become: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 将安装用户加入 linuxbrew 组"
+  ansible.builtin.user:
+    name: "{{ brew_user }}"
+    groups: "{{ brew_group }}"
+    append: true
+  become: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 部署 brew 前缀目录"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    src="{{ _brew_offline_src }}"
+    dest="{{ brew_prefix }}"
+    mkdir -p "$(dirname "$dest")"
+    if [ -e "$dest" ]; then
+      echo "目标已存在，先移除：$dest"
+      rm -rf "$dest"
+    fi
+    mv "$src" "$dest"
+    chown -R "{{ brew_user }}:{{ brew_group }}" "$dest"
+    echo "deployed: $dest"
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  become: true
+  register: _brew_offline_deploy
+  changed_when: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 输出部署结果"
+  ansible.builtin.debug:
+    msg: "{{ _brew_offline_deploy.stdout_lines | default([]) }}"
+
+# ---------- 环境变量文件 ----------
+- name: "[{{ install_pkg_name }}] 离线 —— 写入运行期环境变量"
+  ansible.builtin.template:
+    src: brew.sh.j2
+    dest: "{{ brew_profile_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  become: true
+
+# ---------- 校验 ----------
+- name: "[{{ install_pkg_name }}] 离线 —— 校验 brew 可执行"
+  ansible.builtin.command:
+    cmd: "{{ brew_prefix }}/bin/brew --version"
+  args:
+    chdir: /tmp
+  environment:
+    HOME: "/home/{{ brew_user }}"
+    HOMEBREW_NO_ANALYTICS: "1"
+  become: true
+  become_user: "{{ brew_user }}"
+  register: _brew_offline_version
+  changed_when: false
+  failed_when: _brew_offline_version.rc != 0
+
+- name: "[{{ install_pkg_name }}] 离线 —— 输出 brew 版本"
+  ansible.builtin.debug:
+    msg: "✅ Homebrew 离线安装成功：{{ _brew_offline_version.stdout_lines | first | default('?') }}"

@@ -1,0 +1,108 @@
+---
+# =============================================================================
+# 分发离线包 —— sftp 上传 或 拷贝到本地共享目录
+# =============================================================================
+# 由 offline_distribute_enabled 控制是否执行；
+# 关闭时只把产物拉回控制端 artifacts 目录，供人工取用。
+#
+# 产出：_install_distributed_to（人类可读的目的地描述）
+# =============================================================================
+
+- name: 分发 —— 计算产物文件名
+  ansible.builtin.set_fact:
+    _install_pkg_basename: "{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
+    _install_artifact_file: >-
+      {{ install_base_artifact_dir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz
+  tags: [install_base]
+
+- name: 分发 —— 拉回控制端 artifacts 目录
+  ansible.builtin.fetch:
+    src: "{{ _install_built_package }}"
+    dest: "{{ install_base_artifact_dir }}/"
+    flat: true
+  register: _install_fetch_result
+  tags: [install_base]
+
+- name: 分发 —— 同步拉回校验文件
+  ansible.builtin.fetch:
+    src: "{{ _install_built_package }}.{{ install_base_checksum_algo }}"
+    dest: "{{ install_base_artifact_dir }}/"
+    flat: true
+  tags: [install_base]
+
+- name: 分发 —— 提示产物已落控制端
+  ansible.builtin.debug:
+    msg:
+      - "[{{ install_pkg_name }}] 离线包已拉回控制端"
+      - "  {{ install_base_artifact_dir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
+      - "  offline_distribute_enabled={{ offline_distribute_enabled }}"
+  tags: [install_base]
+
+- name: 分发 —— 分发到远端
+  when: offline_distribute_enabled | bool
+  tags: [install_base]
+  block:
+    - name: 分发 —— 本地共享目录
+      when: offline_distribute_method == 'local'
+      block:
+        - name: 分发 —— 确保本地共享目录存在
+          ansible.builtin.file:
+            path: "{{ local_dist_dir }}"
+            state: directory
+            mode: "0755"
+          delegate_to: localhost
+          run_once: true
+
+        - name: 分发 —— 拷贝到本地共享目录
+          ansible.builtin.copy:
+            src: "{{ _install_artifact_file }}"
+            dest: "{{ local_dist_dir }}/"
+            mode: "0644"
+          delegate_to: localhost
+          run_once: true
+
+        - name: 分发 —— 拷贝校验文件到本地共享目录
+          ansible.builtin.copy:
+            src: "{{ _install_artifact_file }}.{{ install_base_checksum_algo }}"
+            dest: "{{ local_dist_dir }}/"
+            mode: "0644"
+          delegate_to: localhost
+          run_once: true
+
+        - name: 分发 —— 记录本地分发目的地
+          ansible.builtin.set_fact:
+            _install_distributed_to: "{{ local_dist_dir }}/{{ _install_pkg_basename }}"
+          delegate_to: localhost
+
+    - name: 分发 —— 上传到 SFTP 服务器
+      when: offline_distribute_method == 'sftp'
+      block:
+        - name: 分发 —— 上传离线包
+          ansible.builtin.shell: |
+            set -euo pipefail
+            command -v sshpass >/dev/null 2>&1 || { echo "sshpass 未安装"; exit 1; }
+            SSHPASS='{{ sftp_password }}' sshpass -e sftp \
+              -P {{ sftp_port }} \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -o BatchMode=no \
+              -b - \
+              {{ sftp_user }}@{{ sftp_host }} <<EOF
+            -mkdir {{ sftp_path }}
+            put {{ _install_artifact_file }} {{ sftp_path }}/
+            put {{ _install_artifact_file }}.{{ install_base_checksum_algo }} {{ sftp_path }}/
+            EOF
+          args:
+            chdir: /tmp
+            executable: /bin/bash
+          delegate_to: localhost
+          run_once: true
+          register: _install_sftp_result
+          changed_when: true
+          no_log: true
+
+        - name: 分发 —— 记录 SFTP 分发目的地
+          ansible.builtin.set_fact:
+            _install_distributed_to: >-
+              sftp://{{ sftp_user }}@{{ sftp_host }}:{{ sftp_port }}{{ sftp_path }}/{{ _install_pkg_basename }}
+          delegate_to: localhost

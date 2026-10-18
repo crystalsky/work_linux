@@ -1,0 +1,8 @@
+---
+# 沙箱主机专用 playbook（仅收敛沙箱组）
+- name: 沙箱主机配置
+  hosts: sandbox
+  gather_facts: true
+  roles:
+    - role: common
+    - role: sshd_sandbox

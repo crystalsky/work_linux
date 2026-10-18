@@ -1,0 +1,4 @@
+---
+- name: 重新加载时区信息
+  ansible.builtin.command: dpkg-reconfigure -f noninteractive tzdata
+  changed_when: true

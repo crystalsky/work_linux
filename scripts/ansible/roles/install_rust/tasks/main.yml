@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# install_rust —— 入口
+# =============================================================================
+# 流程：
+#   1. include_vars 求值内部变量（在 defaults 合并完成后，-e 覆盖才生效）
+#   2. import_role install_base —— 识别系统、建目录、换源
+#   3. 复用 install_base 的编排骨架（契约 → 探测 → 决策 → 执行）
+#   4. 执行阶段回落到本 role 的 online_install.yml / offline_apply.yml
+#
+# ⚠️ import_role 是静态导入，condition 会作用到其中每个任务；
+#    因此任何需要在基座之前求值的逻辑都必须放在 import_role 之前。
+# =============================================================================
+
+- name: "初始化 —— 求值 rust 角色内部变量"
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/main.yml"
+
+- name: "初始化基座 —— rust 安装前置"
+  ansible.builtin.import_role:
+    name: install_base
+
+- name: "执行 —— rust 安装编排"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/orchestrate.yml"

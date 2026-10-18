@@ -1,0 +1,16 @@
+---
+extends: relaxed
+
+ignore: |
+  .venv/
+  collections/
+  uv.lock
+
+rules:
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+  truthy:
+    # Ansible 的 yes/no 是合法布尔写法，不强制 true/false
+    allowed-values: ["true", "false", "yes", "no"]
+    check-keys: false

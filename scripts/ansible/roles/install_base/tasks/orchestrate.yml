@@ -1,0 +1,42 @@
+---
+# =============================================================================
+# 通用编排 —— 每个 install_<pkg> role 的 tasks/main.yml 只需 6 行
+# =============================================================================
+# 顺序：
+#   1. contract       契约与变量校验（任何动作之前）
+#   2. detect         只读探测现有状态
+#   3. decide         按状态与开关决定动作
+#   4. run            执行（分在线/离线/打包三条路径）
+#
+# role 必须提供：
+#   install_pkg_name / install_pkg_version
+#   _install_probe_cmd
+#   tasks/online_install.yml      在线安装
+#   tasks/offline_apply.yml       离线安装的应用步骤
+#   metas/打包时设置 _install_pack_sources
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 阶段 1/4 —— 契约校验"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/contract.yml"
+  tags: [install_pkg]
+
+- name: "[{{ install_pkg_name }}] 阶段 2/4 —— 状态探测（只读）"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/detect.yml"
+  tags: [install_pkg]
+
+- name: "[{{ install_pkg_name }}] 阶段 3/4 —— 决策"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/decide.yml"
+  tags: [install_pkg]
+  when: not (make_offline_package | default(false) | bool)
+
+- name: "[{{ install_pkg_name }}] 阶段 4/4 —— 执行"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/run.yml"
+  tags: [install_pkg]
+
+- name: "[{{ install_pkg_name }}] 完成"
+  ansible.builtin.debug:
+    msg: >-
+      [{{ install_pkg_name }}] 本次动作 = {{ _install_action | default('package') }}
+      ｜ 最终状态 = {{ install_state | default('unknown') }}
+      {%- if _install_distributed_to is defined %} ｜ 产物 = {{ _install_distributed_to }}{% endif %}
+  tags: [install_pkg]

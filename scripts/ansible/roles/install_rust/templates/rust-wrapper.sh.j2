@@ -1,0 +1,21 @@
+#!/bin/sh
+# {{ ansible_managed | default('Ansible managed') }}
+# rustup 代理 wrapper —— 由 install_rust role 生成
+#
+# 为什么不直接用软链：
+#   rustup 通过 RUSTUP_HOME / CARGO_HOME 定位工具链，
+#   软链到 /usr/local/bin 后一旦调用者没读 /etc/profile.d/rust.sh
+#   （ssh 直接执行命令、systemd、cron 等），就会报
+#   "rustup could not choose a version of cargo to run"。
+#   这里把环境写死，任何调用方式都可用。
+RUSTUP_HOME="{{ rust_rustup_home }}"
+CARGO_HOME="{{ rust_cargo_home }}"
+RUSTUP_DIST_SERVER="{{ rust_dist_server }}"
+RUSTUP_UPDATE_ROOT="{{ rust_dist_server }}/rustup"
+export RUSTUP_HOME CARGO_HOME RUSTUP_DIST_SERVER RUSTUP_UPDATE_ROOT
+{% if rust_disable_telemetry | bool %}
+RUSTUP_TELEMETRY=0
+export RUSTUP_TELEMETRY
+{% endif %}
+
+exec "{{ rust_cargo_home }}/bin/{{ item }}" "$@"

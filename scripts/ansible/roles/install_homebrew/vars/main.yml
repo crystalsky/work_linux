@@ -1,0 +1,25 @@
+---
+# =============================================================================
+# install_homebrew —— 角色内部常量
+# =============================================================================
+
+# 探测命令：brew 可执行且能输出版本即视为已安装
+_install_probe_cmd: >-
+  {{ brew_prefix }}/bin/brew --version
+
+# 离线安装失败时需要回滚的路径
+_install_rollback_paths:
+  - "{{ brew_prefix }}"
+  - "{{ brew_profile_file }}"
+
+# 制作离线包时需要打包的路径
+_install_pack_sources:
+  - "{{ brew_prefix }}"
+  - "{{ brew_profile_file }}"
+
+# 打包时排除的临时/缓存内容（可显著减小体积）
+_install_pack_exclude:
+  - "*/Homebrew/.git/objects/pack/tmp_pack_*"
+  - "*/cache/downloads/*"
+  - "*/Cellar/*/*/.brew/*.lock"
+  - "*/logs/*"

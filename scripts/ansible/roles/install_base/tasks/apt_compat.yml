@@ -1,0 +1,140 @@
+---
+# =============================================================================
+# apt 兼容层 —— 用 command 调 apt-get，绕开 ansible.builtin.apt
+# =============================================================================
+# 为什么需要这个文件：
+#   Ubuntu 20.04 系统 Python 是 3.8，而 Ansible core 2.20 要求目标机 >= 3.9；
+#   镜像里另装了 Python 3.12（/opt/python/bin/python3），但它没有 python3-apt
+#   （apt_pkg 是 cpython-38 ABI 的 .so，无法给 3.12 复用）。
+#   实测：用 3.12 作解释器时，除 apt 模块外所有模块（file/copy/template/
+#   get_url/command/lineinfile/stat...）均正常，只有 apt 模块报
+#   "Could not import the python3-apt module"。
+#   因此这里统一用 apt-get 命令行实现，并自行维护幂等语义。
+#
+# 调用约定（在 include_tasks 之前设置）：
+#   _apt_pkgs        必填，要安装/删除的包名列表
+#   _apt_state       present（默认）| absent
+#   _apt_update      bool，是否先更新索引（默认 false）
+#   _apt_cache_time  索引有效秒数（默认 3600，仅 _apt_update 时参考）
+# =============================================================================
+
+- name: "apt 兼容层 —— 计算去重后的包列表"
+  ansible.builtin.set_fact:
+    _apt_pkgs_norm: >-
+      {{ _apt_pkgs | default([]) | unique | sort }}
+
+- name: "apt 兼容层 —— 校验包列表非空"
+  ansible.builtin.assert:
+    that:
+      - _apt_pkgs_norm | length > 0
+    fail_msg: "apt 兼容层：_apt_pkgs 为空，无需执行"
+    quiet: true
+
+# -----------------------------------------------------------------------------
+# 索引更新（可选）：用 /var/lib/apt/periodic/update-success-stamp 判断新鲜度
+# -----------------------------------------------------------------------------
+- name: "apt 兼容层 —— 检查索引更新时间戳"
+  ansible.builtin.stat:
+    path: /var/lib/apt/periodic/update-success-stamp
+  register: _apt_stamp
+  when: _apt_update | default(false) | bool
+
+- name: "apt 兼容层 —— 判定是否需要 apt-get update"
+  ansible.builtin.set_fact:
+    _apt_need_update: >-
+      {{ (not _apt_stamp.stat.exists) or
+         (_apt_stamp.stat.mtime | default(0) <
+          ansible_date_time.epoch | int - (_apt_cache_time | default(3600) | int)) }}
+  when: _apt_update | default(false) | bool
+
+- name: "apt 兼容层 —— 执行 apt-get update"
+  ansible.builtin.command:
+    argv: ["apt-get", "update", "-qq"]
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: _apt_update_result
+  changed_when: _apt_update_result.rc == 0
+  failed_when: _apt_update_result.rc != 0
+  retries: 3
+  delay: 10
+  when:
+    - _apt_update | default(false) | bool
+    - _apt_need_update | default(false) | bool
+
+# -----------------------------------------------------------------------------
+# 已装状态探测：dpkg-query 一次性取回全部已装包名，供幂等判定
+#   用 dpkg-query -W -f='${Package} ${Status}\n' 比逐包 dpkg -s 快得多
+# -----------------------------------------------------------------------------
+- name: "apt 兼容层 —— 查询已安装包列表"
+  ansible.builtin.command:
+    argv: ["dpkg-query", "-W", "-f=${Package} ${Status}\n"]
+  register: _apt_dpkg_all
+  changed_when: false
+  failed_when: false
+
+- name: "apt 兼容层 —— 计算缺失（present）或多余（absent）的包"
+  ansible.builtin.set_fact:
+    _apt_installed: >-
+      {{ _apt_dpkg_all.stdout_lines | default([])
+         | select('search', 'install ok installed')
+         | map('regex_replace', ' [^ ]+ .*$', '')
+         | list }}
+    _apt_state_norm: "{{ _apt_state | default('present') }}"
+
+- name: "apt 兼容层 —— 计算需要变更的包"
+  ansible.builtin.set_fact:
+    _apt_todo: >-
+      {{ (_apt_pkgs_norm | difference(_apt_installed))
+         if _apt_state_norm == 'present'
+         else (_apt_pkgs_norm | intersect(_apt_installed)) }}
+
+- name: "apt 兼容层 —— 输出变更计划"
+  ansible.builtin.debug:
+    msg: >-
+      {{ '已满足，无需变更：' ~ (_apt_pkgs_norm | join(' '))
+         if _apt_todo | length == 0
+         else ('将' ~ ('安装' if _apt_state_norm == 'present' else '卸载') ~
+               ' ' ~ (_apt_todo | length | string) ~ ' 个包：' ~ (_apt_todo | join(' '))) }}
+
+# -----------------------------------------------------------------------------
+# 执行变更
+# -----------------------------------------------------------------------------
+- name: "apt 兼容层 —— 等待包管理器空闲"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+  when: _apt_todo | length > 0
+
+- name: "apt 兼容层 —— 安装软件包"
+  ansible.builtin.command:
+    argv: >-
+      {{ ['apt-get', 'install', '-y', '--no-install-recommends',
+          '-o', 'Dpkg::Options::=--force-confdef',
+          '-o', 'Dpkg::Options::=--force-confold'] + _apt_todo }}
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: _apt_install_result
+  changed_when: _apt_install_result.rc == 0
+  failed_when: _apt_install_result.rc != 0
+  retries: 2
+  delay: 10
+  when:
+    - _apt_todo | length > 0
+    - _apt_state_norm == 'present'
+
+- name: "apt 兼容层 —— 卸载软件包"
+  ansible.builtin.command:
+    argv: >-
+      {{ ['apt-get', 'remove', '-y'] + _apt_todo }}
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: _apt_remove_result
+  changed_when: _apt_remove_result.rc == 0
+  failed_when: _apt_remove_result.rc != 0
+  when:
+    - _apt_todo | length > 0
+    - _apt_state_norm == 'absent'
+
+- name: "apt 兼容层 —— 记录本次是否发生变更"
+  ansible.builtin.set_fact:
+    _apt_changed: >-
+      {{ (_apt_install_result.changed | default(false)) or
+         (_apt_remove_result.changed | default(false)) }}

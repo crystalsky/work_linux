@@ -1,0 +1,132 @@
+---
+# =============================================================================
+# 制作离线包 —— 流程 2
+# =============================================================================
+# 前提：软件已经通过在线方式装好（由 role 的 online_install.yml 完成）。
+# 本片段负责把「安装产物」打成 tar.gz，并生成 manifest / checksum。
+#
+# role 需要设置：
+#   _install_pack_sources : 要打包的路径列表（绝对路径），如
+#                           ['/home/linuxbrew/.linuxbrew', '/etc/profile.d/brew.sh']
+#   _install_pack_exclude : 打包排除的 pattern 列表（可选）
+#
+# 产出：
+#   _install_built_package : 控制端/目标机上生成的 tar.gz 绝对路径
+# =============================================================================
+
+- name: 打包 —— 校验待打包路径是否存在
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ _install_pack_sources }}"
+  register: _install_pack_src_stat
+  become: true
+  tags: [install_base]
+
+- name: 打包 —— 存在缺失路径则失败
+  ansible.builtin.fail:
+    msg: >-
+      待打包路径不存在：{{ item.item }}。
+      离线包制作的前提是软件已在线安装成功，请先确认 online_install 已完成。
+  loop: "{{ _install_pack_src_stat.results }}"
+  when: not item.stat.exists
+  tags: [install_base]
+
+- name: 打包 —— 准备构建目录
+  ansible.builtin.file:
+    path: "{{ _install_pkg_workdir }}"
+    state: "{{ item }}"
+    mode: "0755"
+  loop:
+    - absent
+    - directory
+  become: true
+  tags: [install_base]
+
+- name: 打包 —— 生成 manifest 文件
+  ansible.builtin.copy:
+    dest: "{{ _install_pkg_workdir }}/MANIFEST.txt"
+    mode: "0644"
+    content: |
+      pkg              : {{ install_pkg_name }}
+      version          : {{ install_pkg_version | default('unknown') }}
+      built_at         : {{ '%Y-%m-%dT%H:%M:%SZ' | strftime(utc=True) }}
+      built_on_host    : {{ inventory_hostname }}
+      os_distribution  : {{ install_base_facts.os_distribution }}
+      os_release       : {{ install_base_facts.os_release }}
+      arch             : {{ install_base_facts.arch }}
+      bundled_paths    :
+      {% for p in _install_pack_sources %}
+        - {{ p }}
+      {% endfor %}
+  become: true
+  tags: [install_base]
+
+- name: 打包 —— 归档安装产物
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd /
+    PKG="{{ _install_pkg_workdir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
+    rm -f "$PKG"
+    # 排除项与源路径必须拼在同一条命令里；Jinja 的 for 循环会吃掉换行，
+    # 导致 tar 参数列表和后续 tar -tzf 粘成一条命令（报
+    # "You may not specify more than one '-Acdtrux'"）。
+    # 因此这里先把参数拼进数组，再一次性执行。
+    EXCLUDES=(
+    {% for p in _install_pack_exclude | default([]) %}
+      --exclude={{ p | quote }}
+    {% endfor %}
+    )
+    SOURCES=(
+    {% for p in _install_pack_sources %}
+      {{ p | regex_replace('^/', '') | quote }}
+    {% endfor %}
+    )
+    tar -czf "$PKG" "${EXCLUDES[@]}" "${SOURCES[@]}"
+    tar -tzf "$PKG" | wc -l
+  args:
+    executable: /bin/bash
+    chdir: /
+  register: _install_pack_result
+  become: true
+  changed_when: true
+  tags: [install_base]
+
+- name: 打包 —— 计算包校验值
+  ansible.builtin.stat:
+    path: "{{ _install_pkg_workdir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
+    checksum_algorithm: "{{ install_base_checksum_algo }}"
+    get_checksum: true
+  register: _install_built_stat
+  become: true
+  tags: [install_base]
+
+# 注意：dest 一旦用 >- 折叠，YAML 会把后面的 mode 也粘进字符串，
+# 生成名为 "xxx.tar.gz.sha256  mode: 0644" 的怪文件。
+# 这里改用 vars 预拼路径，既避免折叠又控制行长。
+- name: 打包 —— 写出校验文件
+  ansible.builtin.copy:
+    dest: "{{ _install_checksum_file }}"
+    mode: "0644"
+    content: |
+      {{ _install_built_stat.stat.checksum }}  {{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz
+  vars:
+    _install_checksum_file: >-
+      {{ _install_pkg_workdir }}/{{ install_pkg_name }}-{{ install_pkg_version
+      }}.tar.gz.{{ install_base_checksum_algo }}
+  become: true
+  tags: [install_base]
+
+- name: 打包 —— 记录产物路径
+  ansible.builtin.set_fact:
+    _install_built_package: "{{ _install_pkg_workdir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
+  tags: [install_base]
+
+- name: 打包 —— 输出产物信息
+  ansible.builtin.debug:
+    msg:
+      - "[{{ install_pkg_name }}] 离线包已生成"
+      - "  路径   : {{ _install_built_package }}"
+      - "  大小   : {{ (_install_built_stat.stat.size / 1024 / 1024) | round(2) }} MB"
+      - "  归档条目: {{ _install_pack_result.stdout_lines | last | default('?') }}"
+      - "  {{ install_base_checksum_algo }}   : {{ _install_built_stat.stat.checksum }}"
+  tags: [install_base]

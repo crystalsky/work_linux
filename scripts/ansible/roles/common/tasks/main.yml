@@ -1,0 +1,25 @@
+---
+- name: 刷新 apt 缓存
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ common_apt_cache_valid_time }}"
+  when: ansible_os_family == 'Debian'
+
+- name: 安装基础软件包
+  ansible.builtin.apt:
+    name: "{{ common_base_packages }}"
+    state: present
+  when:
+    - ansible_os_family == 'Debian'
+    - common_base_packages | length > 0
+
+- name: 校验时区配置存在
+  ansible.builtin.command: "test -f /usr/share/zoneinfo/{{ common_timezone }}"
+  changed_when: false
+  when: common_manage_timezone | bool
+
+- name: 设置时区
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+  when: common_manage_timezone | bool
+  notify: 重新加载时区信息

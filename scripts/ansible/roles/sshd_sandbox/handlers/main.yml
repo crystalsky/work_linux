@@ -1,0 +1,4 @@
+---
+- name: 重载 sshd
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: true

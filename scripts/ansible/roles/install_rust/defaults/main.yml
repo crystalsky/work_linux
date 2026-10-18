@@ -1,0 +1,76 @@
+---
+# =============================================================================
+# install_rust —— Rust 工具链（rustup + cargo/rustc）
+# =============================================================================
+# 设计要点：
+#   * 通过 rustup 官方 static 分发安装，不使用 apt（Ubuntu 20.04 仓库仅 1.75.0，
+#     Debian 13 亦落后），rustup 支持指定 toolchain 与 profile，离线更可控。
+#   * 工具链落在 rustup_home，可整目录打包做离线包（tar.gz + .sha256）。
+#   * 双模式由 install_base 统一编排：online 走 rustup 在线下载，
+#     offline 走解压离线包 → 还原目录树 → 重定向前缀。
+# =============================================================================
+
+# 基础标识（install_base 契约要求）
+install_pkg_name: rust
+install_pkg_version: "stable"
+
+# 目标版本语义：
+#   "stable"           —— 跟随官方 stable 频道（联网更新时可变）
+#   "1.82.0" / "1.82"  —— 锁定具体版本
+rust_toolchain: "{{ install_pkg_version }}"
+rust_profile: minimal
+rust_default_host: ""
+
+# 安装前缀（rustup 的 CARGO_HOME / RUSTUP_HOME 统一到同一根，便于整树打包）
+rust_prefix: /opt/rust
+rust_cargo_home: "{{ rust_prefix }}/cargo"
+rust_rustup_home: "{{ rust_prefix }}/rustup"
+rust_bin_link_dir: /usr/local/bin
+
+# 使用 rustup 的用户与组（与容器 sandbox 用户一致）
+rust_user: "{{ ansible_user | default('test') }}"
+rust_group: "{{ ansible_user | default('test') }}"
+rust_manage_profile: true
+rust_profile_file: /etc/profile.d/rust.sh
+
+# 需要暴露到 rust_bin_link_dir 的命令（以 wrapper 形式生成）
+rust_wrapper_commands:
+  - cargo
+  - rustc
+  - rustup
+  - rustdoc
+  - cargo-fmt
+  - cargo-clippy
+  - clippy-driver
+  - rustfmt
+
+# 分发源
+#   官方：https://static.rust-lang.org
+#   清华：https://mirrors.tuna.tsinghua.edu.cn/rustup
+#   中科大：https://mirrors.ustc.edu.cn/rust-static
+rust_dist_server: "https://mirrors.tuna.tsinghua.edu.cn/rustup"
+# rustup-init 可执行文件的独立下载前缀（null 表示由 dist_server + /rustup 推导）
+rustup_init_base_url: ""
+rustup_init_checksum: ""
+
+# 组件：额外安装的 rustup component
+rust_extra_components: []
+# 额外 target：交叉编译用
+rust_extra_targets: []
+# rustup 分析开关
+rust_disable_telemetry: true
+
+# 安装后校验
+rust_verify: true
+rust_enforce_version: false
+
+# 离线包来源（由 install_base 使用）
+offline_package_path: ""
+offline_package_url: ""
+offline_package_checksum: ""
+
+# -----------------------------------------------------------------------------
+# install_base 钩子
+# -----------------------------------------------------------------------------
+_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
+_install_prepack_tasks: ""

@@ -1,0 +1,37 @@
+---
+# =============================================================================
+# 离线安装主流程 —— 流程 3
+# =============================================================================
+# 通用部分在此完成：取包 -> 校验 -> 解压
+# 软件相关部分交回 role：role 提供 tasks/offline_apply.yml
+#
+# role 需要设置：
+#   _install_has_offline_apply : 是否提供 offline_apply.yml（默认 true）
+# =============================================================================
+
+- name: 离线安装 —— 获取离线包
+  ansible.builtin.import_tasks: fetch_package.yml
+  tags: [install_base]
+
+# 若 fetch 阶段触发了降级，此处直接跳过离线安装
+- name: 离线安装 —— 降级为在线时的提示
+  ansible.builtin.debug:
+    msg: "⚠️  {{ install_pkg_name }} 已降级为在线安装：{{ _install_fallback_reason | default('') }}"
+  when: _effective_install_mode == 'online'
+
+- name: 离线安装 —— 执行离线安装流程
+  when: _effective_install_mode == 'offline'
+  block:
+    - name: 离线安装 —— 校验包完整性
+      ansible.builtin.import_tasks: verify_checksum.yml
+
+    - name: 离线安装 —— 解压离线包
+      ansible.builtin.import_tasks: extract_package.yml
+
+    - name: 离线安装 —— 执行软件相关安装动作
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/offline_apply.yml"
+      when: _install_has_offline_apply | default(true) | bool
+
+- name: 离线安装 —— 写状态标记
+  ansible.builtin.import_tasks: write_state.yml
+  when: _effective_install_mode == 'offline'

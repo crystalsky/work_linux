@@ -1,0 +1,42 @@
+---
+# =============================================================================
+# 识别目标主机的 OS / 架构，并校验是否在支持范围内
+# =============================================================================
+# 产出：install_base_facts（host-level，一次 play 内缓存）
+#   - os_family     : Debian / RedHat ...
+#   - os_distribution: Debian / Ubuntu / Rocky ...
+#   - os_release    : 13 / 22.04 ...
+#   - arch          : x86_64 / aarch64
+#   - pkg_mgr       : apt / dnf
+# =============================================================================
+
+- name: 读取目标主机发行版标识
+  ansible.builtin.set_fact:
+    install_base_facts:
+      os_family: "{{ ansible_facts['os_family'] }}"
+      os_distribution: "{{ ansible_facts['distribution'] }}"
+      os_release: "{{ ansible_facts['distribution_major_version'] }}"
+      arch: "{{ ansible_facts['architecture'] }}"
+      pkg_mgr: >-
+        {{ install_base_pkg_mgr_map[ansible_facts['distribution']] | default('apt') }}
+  tags: [install_base]
+
+- name: 校验发行版是否受支持
+  ansible.builtin.assert:
+    that:
+      - install_base_facts.os_distribution in install_base_supported_distros
+    fail_msg: >-
+      不支持的发行版 [{{ install_base_facts.os_distribution }}]，
+      当前仅支持 {{ install_base_supported_distros | join(' / ') }}
+    quiet: true
+  tags: [install_base]
+
+- name: 校验 CPU 架构是否受支持
+  ansible.builtin.assert:
+    that:
+      - install_base_facts.arch in install_base_supported_arches
+    fail_msg: >-
+      不支持的架构 [{{ install_base_facts.arch }}]，
+      当前仅支持 {{ install_base_supported_arches | join(' / ') }}
+    quiet: true
+  tags: [install_base]

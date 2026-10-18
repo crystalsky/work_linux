@@ -1,0 +1,46 @@
+---
+# 解析安装策略。
+# 只有 xxx_install_method 支持 auto 时才需要本文件；单一装法可直接删掉，
+# 同时把 tasks/main.yml 里「解析安装策略」那一步去掉。
+
+- name: 查询仓库候选版本
+  ansible.builtin.shell: |
+    set -u
+    ver=$(apt-cache policy <xxx> 2>/dev/null | awk '/Candidate:/ {print $2; exit}')
+    if [ -z "${ver}" ] || [ "${ver}" = "(none)" ]; then
+      echo ""
+      exit 0
+    fi
+    ver="${ver#*:}"                        # 剥掉 epoch 前缀 1:
+    echo "${ver}" | grep -oE '^[0-9]+(\.[0-9]+)*' || true
+  args:
+    executable: /bin/bash
+  register: _xxx_repo_probe
+  changed_when: false
+  failed_when: false
+
+- name: 记录仓库版本
+  ansible.builtin.set_fact:
+    _xxx_repo_version: >-
+      {{ _xxx_repo_probe.stdout | trim if _xxx_repo_probe.stdout | trim | length > 0
+         else '0.0.0' }}
+
+- name: 判定实际使用的安装方式
+  ansible.builtin.set_fact:
+    _xxx_effective_method: >-
+      {{ 'apt' if (_xxx_repo_version is version(install_pkg_version, '>='))
+         else 'source' }}
+
+- name: 输出策略判定结果
+  ansible.builtin.debug:
+    msg:
+      - "安装方式设置：{{ xxx_install_method }}"
+      - "仓库候选版本：{{ _xxx_repo_version }}"
+      - "目标版本：{{ install_pkg_version }}"
+      - "实际执行：{{ _xxx_effective_method }}"
+  when: xxx_install_method == 'auto'
+
+- name: 非 auto 模式直接采用设定值
+  ansible.builtin.set_fact:
+    _xxx_effective_method: "{{ xxx_install_method }}"
+  when: xxx_install_method != 'auto'

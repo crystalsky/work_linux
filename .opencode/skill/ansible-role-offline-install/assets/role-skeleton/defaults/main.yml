@@ -1,0 +1,64 @@
+---
+# ============================================================================
+# install_<xxx> —— <软件> 安装 role
+# 基座 install_base 负责：模式判定 / 幂等 / 换源 / 等锁 / 校验 / 回滚 / 打包 / 分发
+# 本 role 只负责：怎么装（online_install.yml）、离线产物怎么落地（offline_apply.yml）
+# ============================================================================
+
+# ---- 基座契约 -------------------------------------------------------------
+install_pkg_name: "<xxx>"
+install_pkg_version: "<ver>"        # 两位=该系列最新；三段=精确钉版本
+
+# ---- 安装方式（按需保留）--------------------------------------------------
+# 若软件只有一种装法，删掉本段并在任务里写死即可
+xxx_install_method: "apt"           # apt | source | auto
+
+# 安装前缀（源码编译 / 目录树形态才需要，否则可删）
+xxx_prefix: "/opt/<xxx>"
+xxx_bin_link_dir: "/usr/local/bin"
+
+# ---- 包清单 ---------------------------------------------------------------
+# apt 模式要装的系统包（注意可能只是元包，真身在依赖里）
+xxx_apt_packages:
+  - "<xxx>"
+  - "<xxx>-dev"
+
+# source 模式编译依赖（不需要源码编译就删掉）
+xxx_build_packages:
+  - build-essential
+  - pkg-config
+  - autoconf
+
+# ---- 下载源 ---------------------------------------------------------------
+xxx_source_mirror: "https://example.com/pub/<xxx>"
+xxx_source_checksum: ""             # 留空则不做源码包校验
+
+# 源码相关的派生变量（不用手填，供 online_install.yml / resolve_source.yml 使用）
+# _xxx_source_major_minor 由 install_pkg_version 前两段拼出，如 3.4
+_xxx_source_major_minor: "{{ install_pkg_version.split('.')[0:2] | join('.') }}"
+# _xxx_source_version 由 resolve_source.yml 在运行时产出（如 3.4.11）
+_xxx_source_tarball: "<xxx>-{{ _xxx_source_version | default(install_pkg_version) }}.tar.gz"
+_xxx_source_effective_url: >-
+  {{ xxx_source_mirror ~ '/' ~ _xxx_source_major_minor ~ '/' ~ _xxx_source_tarball }}
+_xxx_source_build_dir: "{{ install_base_staging_dir }}/<xxx>-src"
+
+# 编译参数（source 模式）
+xxx_configure_opts: ["--disable-docs"]
+xxx_make_jobs: ""                   # 留空 = $(nproc)
+
+# ---- 离线包形态 -----------------------------------------------------------
+# deb  = 打包 .deb 集合（apt 模式；跨发行版/架构不通用）
+# tree = 打包安装目录树（source 模式；跨发行版通用）
+xxx_offline_format: "deb"
+xxx_deb_download_dir: "{{ install_base_staging_dir }}/<xxx>-deb"
+
+# ---- 行为开关 -------------------------------------------------------------
+xxx_enforce_version: false          # 版本低于目标时是否 fail（默认只告警）
+
+# ---- 基座钩子（顺序/取值都不要改结构）-------------------------------------
+# 必须指向本 role 的 online_install.yml（不能留空，也不能指向基座）
+_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
+
+# 打包前的准备任务；deb 形态要先下载包集合，tree 形态不需要
+_install_prepack_tasks: >-
+  {{ role_path ~ '/tasks/pack_debs.yml' if xxx_offline_format == 'deb' else '' }}

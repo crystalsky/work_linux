@@ -1,0 +1,22 @@
+# Homebrew 运行期环境变量
+# 由 ansible role install_homebrew 生成，请勿手工修改
+# 修改后需重新登录或 source 本文件
+
+# ---- 安装前缀 ----
+export HOMEBREW_PREFIX="{{ brew_prefix }}"
+export HOMEBREW_REPOSITORY="{{ brew_repository }}"
+
+# ---- 源（离线部署时指向自建 HTTP 服务） ----
+export HOMEBREW_BREW_GIT_REMOTE="{{ brew_git_remote }}"
+export HOMEBREW_CORE_GIT_REMOTE="{{ brew_core_git_remote }}"
+{% for key, value in brew_runtime_env.items() %}
+{% if value | length > 0 %}
+export {{ key }}="{{ value }}"
+{% endif %}
+{% endfor %}
+
+# ---- PATH ----
+case ":$PATH:" in
+  *":${HOMEBREW_PREFIX}/bin:"*) ;;
+  *) export PATH="${HOMEBREW_PREFIX}/bin:${HOMEBREW_PREFIX}/sbin:${PATH}" ;;
+esac

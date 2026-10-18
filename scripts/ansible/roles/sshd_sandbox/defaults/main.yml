@@ -1,0 +1,5 @@
+---
+sshd_sandbox_port: 22
+sshd_sandbox_permit_root_login: "yes"
+sshd_sandbox_password_authentication: "yes"
+sshd_sandbox_config_path: /etc/ssh/sshd_config.d/99-sandbox.conf

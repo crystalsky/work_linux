@@ -1,0 +1,63 @@
+---
+# =============================================================================
+# 决策 —— 根据探测结果与用户开关，得出「本次到底要不要动手」
+# =============================================================================
+# 严格遵循「默认保守」：
+#   ok      + 无 force            -> skip  （零操作，配置一个字节都不碰）
+#   partial + 无 repair_partial   -> warn  （只警告，不补齐）
+#   drift   + 无 repair_drift     -> warn  （只警告，不修正）
+#   absent                        -> install
+#
+# 产出：_install_action = install | repair | skip
+# =============================================================================
+
+- name: 决策 —— 强制重装开关优先
+  ansible.builtin.set_fact:
+    _install_action: install
+    _install_action_reason: "install_force=true，强制全量重装"
+  when: install_force | bool
+  tags: [install_base]
+
+- name: 决策 —— 未安装，执行全量安装
+  ansible.builtin.set_fact:
+    _install_action: install
+    _install_action_reason: "目标不存在，执行全量安装"
+  when:
+    - not (install_force | bool)
+    - install_state == 'absent'
+  tags: [install_base]
+
+- name: 决策 —— 安装不完整
+  ansible.builtin.set_fact:
+    _install_action: "{{ 'repair' if (install_repair_partial | bool) else 'skip' }}"
+    _install_action_reason: >-
+      {{ '检测到不完整安装，install_repair_partial=true，执行补齐'
+         if (install_repair_partial | bool)
+         else '检测到不完整安装，但 install_repair_partial=false，保持现状不做修改' }}
+  when:
+    - not (install_force | bool)
+    - install_state == 'partial'
+  tags: [install_base]
+
+- name: 决策 —— 已安装（配置一致）
+  ansible.builtin.set_fact:
+    _install_action: skip
+    _install_action_reason: "目标已安装且状态完整，不做任何修改"
+  when:
+    - not (install_force | bool)
+    - install_state == 'ok'
+  tags: [install_base]
+
+- name: 决策 —— 输出决策结果
+  ansible.builtin.debug:
+    msg: "[{{ install_pkg_name }}] 决策 = {{ _install_action }} ｜ {{ _install_action_reason }}"
+  tags: [install_base]
+
+- name: 决策 —— 安装不完整时给出明确警告
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  {{ install_pkg_name }} 处于不完整状态，已跳过安装。"
+      - "    当前配置：install_repair_partial={{ install_repair_partial }}"
+      - "    如需补齐，请设置 install_repair_partial=true 后重跑。"
+  when: install_state == 'partial' and not (install_repair_partial | bool)
+  tags: [install_base]

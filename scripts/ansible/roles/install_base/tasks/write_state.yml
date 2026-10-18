@@ -1,0 +1,42 @@
+---
+# =============================================================================
+# 写状态标记 —— 每个包安装成功后落一份 JSON
+# =============================================================================
+# 用途：
+#   1. 下次探测可区分「已安装但缺标记（partial）」与「完整安装（ok）」
+#   2. 排障时能看到「谁装的、什么时候装的、从哪个包装的、装了什么版本」
+#
+# 字段说明见 docs —— 不要随意增删字段，探测逻辑依赖它们。
+# =============================================================================
+
+- name: 状态 —— 采集当前时间戳
+  ansible.builtin.set_fact:
+    _install_state_timestamp: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime(utc=True) }}"
+  tags: [install_base]
+
+- name: 状态 —— 写安装状态标记
+  ansible.builtin.copy:
+    dest: "{{ _install_pkg_state_file }}"
+    mode: "0644"
+    content: |
+      {
+        "pkg": {{ install_pkg_name | to_json }},
+        "version": {{ install_pkg_version_actual | default(install_pkg_version) | default('unknown') | to_json }},
+        "version_expected": {{ install_pkg_version | default('unknown') | to_json }},
+        "mode": {{ _effective_install_mode | to_json }},
+        "installed_at": {{ _install_state_timestamp | to_json }},
+        "package_file": {{ _install_pkg_local_file | to_json }},
+        "checksum_algo": {{ install_base_checksum_algo | to_json }},
+        "checksum": {{ (_install_pkg_checksum_stat.stat.checksum
+                        | default('')) | to_json }},
+        "host": {{ inventory_hostname | to_json }}
+      }
+  become: true
+  when: install_base_write_state | bool
+  tags: [install_base]
+
+- name: 状态 —— 提示状态标记位置
+  ansible.builtin.debug:
+    msg: "[{{ install_pkg_name }}] 状态已写入 {{ _install_pkg_state_file }}"
+  when: install_base_write_state | bool
+  tags: [install_base]

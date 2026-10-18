@@ -1,0 +1,20 @@
+---
+# install_base 元数据
+# 这是一个"任务库"型 role：只在被 install_<pkg> 依赖时执行一次初始化，
+# 自身不做任何软件安装。实际流程片段全部由 tasks/*.yml 提供、被 include 调用。
+galaxy_info:
+  role_name: install_base
+  author: work_linux
+  description: 在线 / 离线双模式安装基座（共享任务片段 + 变量契约）
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - install
+    - offline
+    - base
+
+dependencies: []

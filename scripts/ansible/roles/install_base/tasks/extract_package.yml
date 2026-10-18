@@ -1,0 +1,42 @@
+---
+# =============================================================================
+# 解压离线包到临时目录
+# =============================================================================
+# 每次解压前清空暂存目录，保证「本次安装看到的内容」只来自这个包，
+# 不会被上一次残留影响，这也是原子化的一部分。
+#
+# 产出：_install_pkg_extract_dir（解压后的根目录）
+# =============================================================================
+
+- name: 解压 —— 清理上一次的暂存目录
+  ansible.builtin.file:
+    path: "{{ _install_pkg_workdir }}"
+    state: absent
+  become: true
+  tags: [install_base]
+
+- name: 解压 —— 创建暂存与解压目录
+  ansible.builtin.file:
+    path: "{{ _install_pkg_extract_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+  tags: [install_base]
+
+- name: 解压 —— 展开离线包
+  ansible.builtin.unarchive:
+    src: "{{ _install_pkg_local_file }}"
+    dest: "{{ _install_pkg_extract_dir }}"
+    remote_src: true
+    extra_opts:
+      - --no-same-owner
+  become: true
+  register: _install_unarchive_result
+  tags: [install_base]
+
+- name: 解压 —— 输出解压结果
+  ansible.builtin.debug:
+    msg:
+      - "[{{ install_pkg_name }}] 已解压到 {{ _install_pkg_extract_dir }}"
+      - "解压文件数：{{ _install_unarchive_result.files | length | default(0) }}"
+  tags: [install_base]

@@ -1,0 +1,37 @@
+---
+# =============================================================================
+# install_rust —— 计算后的内部变量（在 defaults 合并后由 include_vars 求值）
+# =============================================================================
+
+# 探测命令：能输出 cargo 版本号即视为已安装
+_install_probe_cmd: "{{ rust_cargo_home }}/bin/cargo --version"
+
+# 离线安装失败时需回滚的路径（整个前缀 + profile 文件）
+_install_rollback_paths:
+  - "{{ rust_prefix }}"
+  - "{{ rust_profile_file }}"
+
+# 打离线包时要收集的路径
+_install_pack_sources:
+  - "{{ rust_prefix }}"
+
+_install_pack_exclude:
+  - "*/registry/cache/*"
+  - "*/registry/src/*"
+  - "*/git/db/*"
+  - "*/tmp/*"
+  - "*/downloads/*"
+
+# -----------------------------------------------------------------------------
+# rustup-init 下载地址推导
+#   dist_server 指到 rustup 根（如 .../rustup），rustup-init 位于其下
+#   /rustup/dist/<host>/rustup-init
+# -----------------------------------------------------------------------------
+_rustup_host: >-
+  {{ rust_default_host if rust_default_host | length > 0
+     else 'x86_64-unknown-linux-gnu' }}
+
+_rustup_init_url: >-
+  {{ rustup_init_base_url ~ '/rustup-init'
+     if rustup_init_base_url | length > 0
+     else rust_dist_server ~ '/rustup/dist/' ~ _rustup_host ~ '/rustup-init' }}

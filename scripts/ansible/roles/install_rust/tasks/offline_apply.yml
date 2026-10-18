@@ -1,0 +1,146 @@
+---
+# =============================================================================
+# install_rust —— 离线安装（解压 tar.gz 后还原目录树）
+# =============================================================================
+# 离线包结构（由 install_base 的 make_offline_package 生成）：
+#   rust-stable.tar.gz
+#   ├── cargo/            <- 原 rust_cargo_home 内容
+#   └── rustup/           <- 原 rust_rustup_home 内容
+#
+# 解压后 install_base 已把内容放到 _install_pkg_workdir，
+# 本文件负责把它还原到 rust_prefix，并重建软链与 profile。
+# =============================================================================
+
+- name: "离线 —— 定位解压后的 rust 目录"
+  ansible.builtin.shell: |
+    set -u
+    # 优先按预期布局查找：<workdir>/cargo/bin/cargo
+    if [ -x "{{ _install_pkg_workdir }}/cargo/bin/cargo" ]; then
+      echo "cargo_dir={{ _install_pkg_workdir }}/cargo"
+      echo "rustup_dir={{ _install_pkg_workdir }}/rustup"
+      echo "layout=nested"
+      exit 0
+    fi
+    # 兜底：任意位置的 cargo/bin/cargo
+    C="$(find "{{ _install_pkg_workdir }}" -maxdepth 5 -type f -path '*/cargo/bin/cargo' 2>/dev/null | head -1)"
+    if [ -n "$C" ]; then
+      R="$(dirname "$(dirname "$C")")"
+      echo "cargo_dir=$R"
+      echo "rustup_dir=$(dirname "$R")/rustup"
+      echo "layout=flat"
+      exit 0
+    fi
+    echo "layout=none"
+  args:
+    executable: /bin/bash
+  register: _rust_offline_layout
+  changed_when: false
+
+- name: "离线 —— 校验离线包内容"
+  ansible.builtin.assert:
+    that:
+      - "'layout=none' not in _rust_offline_layout.stdout"
+    fail_msg: >-
+      离线包内未找到 cargo 可执行文件，包可能不完整。
+      解压目录：{{ _install_pkg_workdir }}
+    quiet: true
+
+- name: "离线 —— 解析出 cargo / rustup 目录"
+  ansible.builtin.set_fact:
+    _rust_offline_cargo_dir: >-
+      {{ (_rust_offline_layout.stdout | regex_findall('cargo_dir=([^\n]+)') | first
+          | default('', true)) }}
+    _rust_offline_rustup_dir: >-
+      {{ (_rust_offline_layout.stdout | regex_findall('rustup_dir=([^\n]+)') | first
+          | default('', true)) }}
+
+- name: "离线 —— 清空旧前缀（避免残留混装）"
+  ansible.builtin.file:
+    path: "{{ rust_prefix }}"
+    state: absent
+
+- name: "离线 —— 创建安装目录"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ rust_user }}"
+    group: "{{ rust_group }}"
+    mode: "0755"
+  loop:
+    - "{{ rust_prefix }}"
+    - "{{ rust_cargo_home }}"
+    - "{{ rust_rustup_home }}"
+
+- name: "离线 —— 搬运 cargo 目录"
+  ansible.builtin.shell: |
+    set -eu
+    cp -a "{{ _rust_offline_cargo_dir }}/." "{{ rust_cargo_home }}/"
+    echo "copied cargo -> {{ rust_cargo_home }}"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: "离线 —— 搬运 rustup 目录"
+  ansible.builtin.shell: |
+    set -eu
+    if [ -d "{{ _rust_offline_rustup_dir }}" ]; then
+      cp -a "{{ _rust_offline_rustup_dir }}/." "{{ rust_rustup_home }}/"
+      echo "copied rustup -> {{ rust_rustup_home }}"
+    else
+      echo "skip: rustup 目录不存在 {{ _rust_offline_rustup_dir }}"
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: "离线 —— 修正属主"
+  ansible.builtin.file:
+    path: "{{ rust_prefix }}"
+    state: directory
+    owner: "{{ rust_user }}"
+    group: "{{ rust_group }}"
+    recurse: true
+
+- name: "离线 —— 创建命令 wrapper（自带 RUSTUP_HOME/CARGO_HOME）"
+  ansible.builtin.template:
+    src: rust-wrapper.sh.j2
+    dest: "{{ rust_bin_link_dir }}/{{ item }}"
+    mode: "0755"
+    force: true
+  loop: "{{ rust_wrapper_commands }}"
+
+- name: "离线 —— 生成 /etc/profile.d/rust.sh"
+  ansible.builtin.template:
+    src: rust.sh.j2
+    dest: "{{ rust_profile_file }}"
+    mode: "0644"
+    force: false
+  when: rust_manage_profile | bool
+
+- name: "离线 —— 校验 cargo 可运行"
+  ansible.builtin.command:
+    argv: ["{{ rust_cargo_home }}/bin/cargo", "--version"]
+  become: true
+  become_user: "{{ rust_user }}"
+  environment:
+    RUSTUP_HOME: "{{ rust_rustup_home }}"
+    CARGO_HOME: "{{ rust_cargo_home }}"
+  register: _rust_offline_verify
+  changed_when: false
+  failed_when: false
+
+- name: "离线 —— 版本校验失败则中止（触发回滚）"
+  ansible.builtin.assert:
+    that:
+      - _rust_offline_verify.rc | default(1) == 0
+    fail_msg: >-
+      离线安装后 cargo 无法运行：
+      stdout={{ _rust_offline_verify.stdout | default('') }}
+      stderr={{ _rust_offline_verify.stderr | default('') }}
+    quiet: true
+
+- name: "离线 —— 记录实际版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ (_rust_offline_verify.stdout | default('') |
+          regex_findall('[0-9]+[.][0-9]+[.][0-9]+') | first | default('unknown', true)) }}

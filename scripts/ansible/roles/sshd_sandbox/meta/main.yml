@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: sshd_sandbox
+  author: work_linux
+  description: 沙箱容器内 sshd 配置管理
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - system
+dependencies: []

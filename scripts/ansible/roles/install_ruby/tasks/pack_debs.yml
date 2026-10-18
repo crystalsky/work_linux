@@ -1,0 +1,131 @@
+---
+# =============================================================================
+# install_ruby —— 制作离线包前的准备（仅 deb 形态）
+# =============================================================================
+# install_base 的路径 A 流程是：
+#   保证在线安装完成 -> make_offline_package.yml -> distribute.yml
+#
+# 但 apt 模式下「安装产物」不是某个目录，而是包管理器里的一堆 .deb。
+# 因此这里先把 .deb 集合 + 依赖清单落盘，
+# 让 make_offline_package.yml 能像打包目录树一样打包它。
+#
+# 两个坑：
+#   1. ruby / ruby-dev 是元包（仅几 KB，Depends 指向 ruby3.x），
+#      只下元包会得到一堆空壳。必须按实际安装的 dpkg 包名下。
+#   2. apt 默认把 .deb 放进 /var/cache/apt/archives，
+#      要落到指定目录必须显式 --print-uris 或从缓存搬运。
+#
+# 产出：
+#   {{ ruby_deb_download_dir }}/*.deb
+#   {{ ruby_deb_download_dir }}/ruby-deps.txt
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 打包 —— 等待包管理器空闲"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+- name: "[{{ install_pkg_name }}] 打包 —— 准备 .deb 下载目录"
+  ansible.builtin.file:
+    path: "{{ ruby_deb_download_dir }}"
+    state: "{{ item }}"
+    mode: "0755"
+  loop: [absent, directory]
+  become: true
+
+# 为什么不用 apt-get -s install 展开依赖：
+#   依赖已满足时 apt 模拟器只报元包本身，不会展开闭包
+#   （ruby 只有 6.5KB，会得到一个空壳离线包）。
+# 为什么不用 apt-cache depends --recurse：
+#   它会展开到 libc6 / dpkg 等基础包，产出几百个与 ruby 无关的包。
+# 采用：取本机已安装的 ruby 相关包集合 —— 这正是 apt 装 ruby 后的真实产物，
+#       换机器时 dpkg -i 这批包即可复现同版本 ruby。
+- name: "[{{ install_pkg_name }}] 打包 —— 收集本机已安装的 ruby 相关包"
+  ansible.builtin.shell: |
+    set -uo pipefail
+    dpkg-query -W -f='${Package}\n' 2>/dev/null \
+      | grep -E '^(ruby|libruby)' \
+      | sed 's/:.*//' | sort -u
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _ruby_pkg_names
+  changed_when: false
+  become: true
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 打包 —— 记录待下载包名"
+  ansible.builtin.set_fact:
+    _ruby_real_pkg_names: >-
+      {{ ((_ruby_pkg_names.stdout_lines | default([]))
+          + ruby_apt_packages) | unique }}
+
+- name: "[{{ install_pkg_name }}] 打包 —— 包名收集结果"
+  ansible.builtin.debug:
+    msg:
+      - "声明包：{{ ruby_apt_packages | join(' ') }}"
+      - "本机已装（{{ _ruby_real_pkg_names | length }} 个）：{{ _ruby_real_pkg_names }}"
+
+- name: "[{{ install_pkg_name }}] 打包 —— 包名为空则中止"
+  ansible.builtin.fail:
+    msg: >-
+      未收集到任何 ruby 相关包名。
+      请先确认 online_install 已成功执行（本机应已安装 ruby）。
+  when: _ruby_real_pkg_names | length == 0
+
+# apt-get download 会把 .deb 放在当前工作目录，行为可控；
+# 且不依赖 /var/cache/apt/archives 的最终落点。
+- name: "[{{ install_pkg_name }}] 打包 —— 下载真实包到产物目录"
+  ansible.builtin.shell: |
+    set -uo pipefail
+    cd "{{ ruby_deb_download_dir }}"
+    apt-get download {{ _ruby_real_pkg_names | join(' ') }}
+  args:
+    executable: /bin/bash
+    chdir: "{{ ruby_deb_download_dir }}"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  become: true
+  register: _ruby_deb_download
+  changed_when: _ruby_deb_download.rc == 0
+  retries: 3
+  delay: 10
+  until: _ruby_deb_download.rc == 0
+
+- name: "[{{ install_pkg_name }}] 打包 —— 生成依赖清单"
+  ansible.builtin.copy:
+    dest: "{{ ruby_deb_download_dir }}/ruby-deps.txt"
+    mode: "0644"
+    content: |
+      # ruby 离线包依赖清单
+      # 元包: {{ ruby_apt_packages | join(' ') }}
+      # 打包包名: {{ _ruby_real_pkg_names | join(' ') }}
+      # 生成时间: {{ '%Y-%m-%dT%H:%M:%SZ' | strftime(utc=True) }}
+      # 生成主机: {{ inventory_hostname }}
+      # 平台: {{ install_base_facts.os_distribution }} {{ install_base_facts.os_release }}
+      # 架构: {{ install_base_facts.arch }}
+  become: true
+
+- name: "[{{ install_pkg_name }}] 打包 —— 统计 .deb 集合"
+  ansible.builtin.shell: |
+    set -u
+    cd "{{ ruby_deb_download_dir }}"
+    echo "count=$(ls -1 ./*.deb 2>/dev/null | wc -l)"
+    echo "size=$(du -sh . | cut -f1)"
+    ls -1 ./*.deb 2>/dev/null | xargs -r -n1 basename
+  args:
+    executable: /bin/bash
+    chdir: "{{ ruby_deb_download_dir }}"
+  register: _ruby_deb_stat
+  changed_when: false
+  become: true
+
+- name: "[{{ install_pkg_name }}] 打包 —— 校验 .deb 集合非空"
+  ansible.builtin.assert:
+    that:
+      - (_ruby_deb_stat.stdout | regex_findall('count=(\\d+)') | first | default('0', true) | int) > 0
+    fail_msg: >-
+      .deb 集合为空（目录 {{ ruby_deb_download_dir }}），无法制作离线包。
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 打包 —— .deb 集合明细"
+  ansible.builtin.debug:
+    msg: "{{ _ruby_deb_stat.stdout_lines | default([]) }}"
