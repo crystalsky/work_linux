@@ -52,8 +52,11 @@
   when:
     - _install_action | default('install') == 'skip'
     - _install_skip_version_probe.stdout | default('', true) | trim | length > 0
+    # 目标版本必须是形如 X.Y[.Z] 的数字版本；像 rust 的 "stable" 这类频道名跳过比较
+    - install_pkg_version | default('') | string
+      | regex_findall('^[0-9]+[.][0-9]+') | length > 0
     - not (_install_skip_version_probe.stdout | trim
-           | regex_findall('[0-9]+\.[0-9]+') | first | default('0.0', true)
+           | regex_findall('[0-9]+[.][0-9]+') | first | default('0.0', true)
            is version(install_pkg_version, '>='))
 
 # ---------- 路径 A：制作离线包 ----------

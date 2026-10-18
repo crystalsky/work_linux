@@ -50,6 +50,28 @@
         - offline_package_path != _install_pkg_local_file
       register: _install_pkg_copied
 
+    # 校验文件必须跟包一起搬，否则 verify_checksum.yml 在缓存目录里
+    # 找不到「同名 .sha256」，会判定为「缺少校验值」而中止。
+    - name: 获取 —— 探测同名校验文件是否存在
+      ansible.builtin.stat:
+        path: "{{ offline_package_path }}.{{ install_base_checksum_algo }}"
+      register: _install_src_checksum_stat
+      when:
+        - _install_src_stat.stat.exists
+        - offline_package_path != _install_pkg_local_file
+
+    - name: 获取 —— 拷贝同名校验文件到缓存目录
+      ansible.builtin.copy:
+        src: "{{ offline_package_path }}.{{ install_base_checksum_algo }}"
+        dest: "{{ _install_pkg_local_file }}.{{ install_base_checksum_algo }}"
+        remote_src: true
+        mode: "0644"
+      become: true
+      when:
+        - _install_src_stat.stat.exists
+        - offline_package_path != _install_pkg_local_file
+        - _install_src_checksum_stat.stat.exists | default(false)
+
 - name: 获取 —— 从 URL 下载离线包
   when:
     - offline_package_url | default('') | length > 0

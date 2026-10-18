@@ -35,7 +35,7 @@
 # -----------------------------------------------------------------------------
 - name: "apt 兼容层 —— 检查索引更新时间戳"
   ansible.builtin.stat:
-    path: /var/lib/apt/periodic/update-success-stamp
+    path: /var/lib/apt/lists
   register: _apt_stamp
   when: _apt_update | default(false) | bool
 
