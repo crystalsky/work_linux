@@ -160,6 +160,36 @@
         creates: "{{ ruby_prefix }}/bin/ruby"
       become: true
 
+    # 离线包若附带运行库 .deb（source 编译的扩展模块依赖它们），
+    # 在这里补装。缺库的典型症状：require "yaml" 报 libyaml-0.so.2 找不到。
+    - name: "[{{ install_pkg_name }}] tree —— 安装随包附带的运行库 .deb"
+      ansible.builtin.shell: |
+        set -u
+        D="{{ _install_pkg_extract_dir }}"
+        N="$(find "$D" -maxdepth 4 -name '*.deb' -type f 2>/dev/null | wc -l)"
+        echo "deb_count=$N"
+        if [ "$N" -eq 0 ]; then
+          exit 0
+        fi
+        find "$D" -maxdepth 4 -name '*.deb' -type f -print0 2>/dev/null \
+          | sort -z | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
+        dpkg --configure -a 2>&1 | tail -3 || true
+      args:
+        executable: /bin/bash
+      register: _ruby_offline_runtime_debs
+      changed_when: "'deb_count=0' not in _ruby_offline_runtime_debs.stdout"
+      failed_when: false
+
+    - name: "[{{ install_pkg_name }}] tree —— 输出运行库补装结果"
+      ansible.builtin.debug:
+        msg: >-
+          {{ '离线包未附带运行库 .deb，跳过补装'
+             if 'deb_count=0' in _ruby_offline_runtime_debs.stdout | default('')
+             else '已补装 '
+                  ~ (_ruby_offline_runtime_debs.stdout | default('')
+                     | regex_findall('deb_count=([0-9]+)') | first | default('0', true))
+                  ~ ' 个运行库包' }}
+
     - name: "[{{ install_pkg_name }}] tree —— 暴露命令到 PATH"
       ansible.builtin.file:
         src: "{{ ruby_prefix }}/bin/{{ item }}"
@@ -204,3 +234,47 @@
 - name: "[{{ install_pkg_name }}] 离线 —— 输出结果"
   ansible.builtin.debug:
     msg: "✅ Ruby 离线安装完成：{{ install_pkg_version_actual }}"
+
+# -----------------------------------------------------------------------------
+# 运行时依赖自检
+# source 编译出的扩展模块（psych.so / openssl.so 等）依赖系统动态库，
+# 这些库属于系统包而非 ruby 目录，离线包里不含。
+# 全新容器里如果缺库，ruby 本体能跑，但 require "yaml"/"openssl" 会失败，
+# 属于"装了却不能用"的隐性故障，因此在这里显式检查。
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 离线 —— 检查扩展模块的动态库依赖"
+  ansible.builtin.shell: |
+    set -u
+    EXT_DIR="$(find "{{ ruby_prefix }}/lib" -maxdepth 4 -type d \
+                 -name 'x86_64-linux' 2>/dev/null | head -1)"
+    if [ -z "$EXT_DIR" ] || [ ! -d "$EXT_DIR" ]; then
+      echo "status=noext"
+      exit 0
+    fi
+    MISSING="$(for so in "$EXT_DIR"/*.so; do
+      [ -e "$so" ] || continue
+      M="$(ldd "$so" 2>/dev/null | grep 'not found' | awk '{print $1}' | tr '\n' ' ')"
+      [ -n "$M" ] && echo "$(basename "$so"):$M"
+    done)"
+    if [ -n "$MISSING" ]; then
+      echo "status=missing"
+      echo "detail<<EOF"
+      echo "$MISSING"
+      echo "EOF"
+    else
+      echo "status=ok"
+    fi
+  args:
+    executable: /bin/bash
+  register: _ruby_offline_libs
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 缺少运行库时告警"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  Ruby 扩展模块存在缺失的动态库，相关功能会加载失败："
+      - "{{ _ruby_offline_libs.stdout | default('') }}"
+      - "    补救：在目标机准备对应运行库包（如 libyaml-0-2、libssl3）。"
+      - "    排查：find {{ ruby_prefix }}/lib -name '*.so' -exec ldd {} \\; | grep 'not found'"
+  when: "'status=missing' in _ruby_offline_libs.stdout | default('')"

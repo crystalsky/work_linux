@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: install_nodejs
+  author: work-linux
+  description: >-
+    通过 nvm 安装指定大版本（22 / 24）的 Node.js，支持在线与离线双模式，
+    并把 node/npm/npx 暴露到系统 PATH 供非交互场景使用。
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions: [trixie]
+    - name: Ubuntu
+      versions: [focal]
+  galaxy_tags:
+    - nodejs
+    - nvm
+    - development
+
+dependencies: []

@@ -18,8 +18,9 @@ _install_rollback_paths:
   - "{{ rust_profile_file }}"
 
 # 打离线包时要收集的路径
-_install_pack_sources:
-  - "{{ rust_prefix }}"
+_install_pack_sources: >-
+  {{ [rust_prefix] +
+     ([rust_build_deb_dir] if rust_offline_include_build_debs | bool else []) }}
 
 # rustup 目录下的 downloads / tmp 是无用的下载缓存，
 # registry 是用户项目的依赖缓存（不属于工具链本体），全部排除

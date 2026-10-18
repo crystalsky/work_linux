@@ -56,7 +56,8 @@
   ansible.builtin.set_fact:
     _ruby_real_pkg_names: >-
       {{ ((_ruby_pkg_names.stdout_lines | default([]))
-          + ruby_apt_packages) | unique }}
+          + ruby_apt_packages
+          + (ruby_runtime_packages | default([]))) | unique }}
 
 - name: "[{{ install_pkg_name }}] 打包 —— 包名收集结果"
   ansible.builtin.debug:

@@ -1,0 +1,56 @@
+---
+# =============================================================================
+# install_nvm —— 变量契约
+# =============================================================================
+# 双模式安装 nvm（Node Version Manager）：
+#   online  —— 下载官方 release 源码快照（GitHub tag tar.gz）解压到 nvm_prefix
+#   offline —— 从离线包部署（tar.gz 内含 nvm_prefix 目录树）
+#
+# 设计要点：
+#   nvm 是纯 shell 脚本实现（nvm.sh），无需编译，安装即解压；
+#   官方 install.sh 默认装到 $HOME/.nvm（单用户），本 role 改成
+#   多用户共享位置 nvm_prefix，并通过 /etc/profile.d/nvm.sh 暴露。
+#
+# 通用开关（install_mode / install_force / install_base_* 等）
+# 由 install_base 的 defaults 提供，本文件只放 nvm 专属变量。
+# =============================================================================
+
+# ---------- install_base 契约（必需） ----------
+install_pkg_name: nvm
+install_pkg_version: "0.40.8"
+
+# ---------- 安装位置 ----------
+# 多用户共享前缀（与 /opt/ruby、/opt/rust 保持一致的风格）
+nvm_prefix: /opt/nvm
+
+# 哪些用户可以使用 nvm（写入 profile.d 的通用脚本，无需逐个配置）
+nvm_profile_file: /etc/profile.d/nvm.sh
+
+# ---------- 在线下载 ----------
+nvm_github_repo: nvm-sh/nvm
+# GitHub 直连在国内常不可用，走加速前缀；留空则直连
+nvm_github_proxy: "https://ghfast.top/"
+nvm_release_url: >-
+  {{ nvm_github_proxy }}https://github.com/{{ nvm_github_repo }}/archive/refs/tags/v{{ install_pkg_version }}.tar.gz
+nvm_release_checksum: ""
+
+# ---------- Node 下载源 ----------
+# nvm 装 Node 时默认从 https://nodejs.org/dist 下载，
+# 国内可改为 npmmirror 等镜像；留空则用 nvm 官方默认。
+nvm_nodejs_org_mirror: ""
+
+# ---------- 运行时行为 ----------
+# 是否在 profile 里自动 `nvm use default`（关闭可避免非交互 shell 报错）
+nvm_autoload: true
+# 传给 nvm 的额外环境（如 NVM_SILENT）
+nvm_runtime_env: {}
+nvm_verify: true
+
+# ---------- 离线包来源 ----------
+offline_package_path: ""
+offline_package_url: ""
+offline_package_checksum: ""
+
+# ---------- install_base 钩子 ----------
+_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
+_install_prepack_tasks: ""

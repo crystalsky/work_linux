@@ -1,0 +1,23 @@
+---
+# Node.js 22（通过 nvm 安装）
+#
+# 用法：
+#   uv run ansible-playbook playbooks/install_nodejs22.yml
+#   uv run ansible-playbook playbooks/install_nodejs22.yml \
+#     -e nodejs_org_mirror=https://npmmirror.com/mirrors/node
+#   uv run ansible-playbook playbooks/install_nodejs22.yml -e make_offline_package=true
+#   uv run ansible-playbook playbooks/install_nodejs22.yml -e install_mode=offline \
+#     -e offline_package_path=/workspace/nodejs22-22.tar.gz
+#
+- name: 安装 Node.js 22
+  hosts: ubuntu2004_sandbox
+  gather_facts: true
+  vars:
+    install_mode: online
+    nodejs_major_version: 22
+    nvm_prefix: /opt/nvm
+    # Node 二进制下载源：国内建议 npmmirror；留空用 nvm 官方默认
+    nodejs_org_mirror: "https://npmmirror.com/mirrors/node"
+    nodejs_set_default: true
+  roles:
+    - install_nodejs

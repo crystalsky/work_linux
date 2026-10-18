@@ -1,0 +1,91 @@
+---
+# =============================================================================
+# install_nodejs —— 打包前准备：随包携带系统运行库 .deb
+# =============================================================================
+# node 二进制依赖 libstdc++6 等系统库。全新容器（尤其精简镜像）里可能缺失，
+# 纯离线环境又无法 apt 补装，因此这里把依赖闭包的 .deb 一并打进离线包。
+#
+# 与 install_rust/tasks/pack_build_debs.yml 同思路：
+#   apt-cache depends --recurse 展开依赖闭包（不用 apt-get --print-uris，
+#   因为包已安装时后者不展开依赖），再 apt-get download 拉 .deb。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 等待包管理器空闲"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+# 先确保依赖包在位（在线模式下若未装则装上，否则 apt-get download 拿不到）
+- name: "[{{ install_pkg_name }}] 打包准备 —— 确保运行库已安装"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+  vars:
+    _apt_pkgs: "{{ nodejs_runtime_packages }}"
+    _apt_state: present
+    _apt_update: true
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 清空运行库下载目录"
+  ansible.builtin.file:
+    path: "{{ nodejs_runtime_deb_dir }}"
+    state: absent
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 创建运行库下载目录"
+  ansible.builtin.file:
+    path: "{{ nodejs_runtime_deb_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 展开运行库依赖闭包"
+  ansible.builtin.shell: |
+    set -u
+    apt-cache depends --recurse --no-recommends --no-suggests \
+      --no-conflicts --no-breaks --no-replaces --no-enhances \
+      {{ nodejs_runtime_packages | join(' ') }} 2>/dev/null \
+      | grep -E '^\w' | sort -u
+  args:
+    executable: /bin/bash
+  register: _nodejs_deb_closure
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 过滤出真实包名"
+  ansible.builtin.set_fact:
+    _nodejs_deb_names: >-
+      {{ _nodejs_deb_closure.stdout_lines | default([])
+         | map('regex_replace', ':<.*$', '')
+         | reject('search', '^[<>|]')
+         | unique | sort }}
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 校验解析到包名"
+  ansible.builtin.assert:
+    that:
+      - _nodejs_deb_names | length > 0
+    fail_msg: "未能从 apt-cache depends 解析出运行库包名。"
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 下载运行库 .deb"
+  ansible.builtin.shell: |
+    set -eu
+    cd "{{ nodejs_runtime_deb_dir }}"
+    apt-get download {{ _nodejs_deb_names | join(' ') }} 2>&1 | tail -5
+    echo "count=$(find . -maxdepth 1 -name '*.deb' | wc -l)"
+  args:
+    executable: /bin/bash
+  register: _nodejs_deb_dl
+  changed_when: true
+  retries: 3
+  delay: 10
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 记录运行库清单"
+  ansible.builtin.shell: |
+    set -u
+    cd "{{ nodejs_runtime_deb_dir }}"
+    find . -maxdepth 1 -name '*.deb' -printf '%f\n' | sort > debs.txt
+    du -sh . | awk '{print "size="$1}'
+    echo "count=$(wc -l < debs.txt)"
+  args:
+    executable: /bin/bash
+  register: _nodejs_deb_stat
+  changed_when: false
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 输出运行库明细"
+  ansible.builtin.debug:
+    msg:
+      - "{{ _nodejs_deb_stat.stdout_lines | default([]) }}"

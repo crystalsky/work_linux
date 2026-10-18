@@ -149,3 +149,61 @@
     install_pkg_version_actual: >-
       {{ (_rust_offline_verify.stdout | default('') |
           regex_findall('[0-9]+[.][0-9]+[.][0-9]+') | first | default('unknown', true)) }}
+
+# 离线包若附带系统编译依赖 .deb（build-essential 等），
+# 在这里补装，让 cargo build 能拿到链接器 cc/gcc。
+- name: "离线 —— 安装随包附带的构建依赖 .deb"
+  ansible.builtin.shell: |
+    set -u
+    D="{{ _install_pkg_extract_dir }}"
+    N="$(find "$D" -maxdepth 4 -name '*.deb' -type f 2>/dev/null | wc -l)"
+    echo "deb_count=$N"
+    if [ "$N" -eq 0 ]; then
+      exit 0
+    fi
+    find "$D" -maxdepth 4 -name '*.deb' -type f -print0 2>/dev/null \
+      | sort -z | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
+    dpkg --configure -a 2>&1 | tail -3 || true
+  args:
+    executable: /bin/bash
+  register: _rust_offline_build_debs
+  changed_when: "'deb_count=0' not in _rust_offline_build_debs.stdout"
+  failed_when: false
+
+- name: "离线 —— 输出构建依赖补装结果"
+  ansible.builtin.debug:
+    msg: >-
+      {{ '离线包未附带构建依赖 .deb，跳过补装'
+         if 'deb_count=0' in _rust_offline_build_debs.stdout | default('')
+         else '已补装 '
+              ~ (_rust_offline_build_debs.stdout | default('')
+                 | regex_findall('deb_count=([0-9]+)') | first | default('0', true))
+              ~ ' 个构建依赖包' }}
+
+# 若离线包没带构建依赖且目标机也没有链接器，
+# 这里显式告警，避免用户编译时才遇到
+# "linker `cc` not found" 而不知所以。
+- name: "离线 —— 检查系统链接器 cc 是否可用"
+  ansible.builtin.shell: |
+    set -u
+    if command -v cc >/dev/null 2>&1; then
+      echo "cc=$(command -v cc)"
+    elif command -v gcc >/dev/null 2>&1; then
+      echo "cc=$(command -v gcc)"
+    else
+      echo "cc="
+    fi
+  args:
+    executable: /bin/bash
+  register: _rust_offline_cc
+  changed_when: false
+
+- name: "离线 —— 缺少链接器时告警（编译会失败）"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  未找到系统链接器 cc/gcc，rustc 可以运行但无法编译可执行文件。"
+      - "    现象：cargo build 报 error: linker `cc` not found"
+      - "    补救：先在目标机准备 build-essential，或在打包前就把它装进目标机。"
+      - "    排查：command -v cc"
+  when: "'cc=' == _rust_offline_cc.stdout | trim
+         or _rust_offline_cc.stdout | trim == 'cc='"

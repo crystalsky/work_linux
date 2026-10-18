@@ -1,0 +1,103 @@
+---
+# =============================================================================
+# install_ruby —— 收集运行库 .deb（source 编译模式的离线包补充件）
+# =============================================================================
+# 为什么需要：
+#   source 编译出的扩展模块（psych.so / openssl.so / zlib.so …）在**运行时**
+#   dlopen 系统动态库。这些库属于系统包，不在 ruby_prefix 目录里，
+#   全新容器里往往缺失，典型症状：
+#     ruby -e 'require "yaml"'
+#     => libyaml-0.so.2: cannot open shared object file
+#   ruby 本体能跑但功能残缺，属于"装了却不能用"的隐性故障。
+#
+# 做法（不写死包名，避免跨发行版差异）：
+#   1. 对 ruby_prefix 下每个扩展 .so 跑 ldd，收集 not found 的库名
+#   2. 用 dpkg -S 反查提供该库的**已安装**包
+#   3. apt-get download 这些包，落到 ruby_runtime_deb_dir
+# 这些 .deb 会随目录树一起进离线包，离线安装时用 dpkg -i 补装。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 运行库 —— 创建下载目录"
+  ansible.builtin.file:
+    path: "{{ ruby_runtime_deb_dir }}"
+    state: directory
+    mode: "0755"
+  when: ruby_offline_include_runtime_debs | bool
+
+- name: "[{{ install_pkg_name }}] 运行库 —— 反查扩展模块缺失库对应的软件包"
+  ansible.builtin.shell: |
+    set -u
+    EXT_DIR="$(find "{{ ruby_prefix }}/lib" -maxdepth 4 -type d \
+                 -name '*linux*' 2>/dev/null | head -1)"
+    if [ -z "$EXT_DIR" ] || [ ! -d "$EXT_DIR" ]; then
+      echo "pkgs="
+      exit 0
+    fi
+    # 1) 收集所有 not found 的库文件名
+    #    注意：即使当前机器没缺库也要继续往下走，
+    #    因为兜底清单 ruby_runtime_packages 必须一并带上，
+    #    否则在「构建机装全了、目标机缺库」的场景下离线包会漏库。
+    MISS_LIBS="$(for so in "$EXT_DIR"/*.so; do
+      [ -e "$so" ] || continue
+      ldd "$so" 2>/dev/null | awk '/not found/ {print $1}'
+    done | sort -u)"
+    # 2) 用 dpkg -S 反查缺失库属于哪个已装包
+    PKGS=""
+    for lib in $MISS_LIBS; do
+      P="$(dpkg -S "*/$lib" 2>/dev/null | head -1 | cut -d: -f1)"
+      [ -n "$P" ] && PKGS="$PKGS $P"
+    done
+    # 3) 兜底：已知运行库包无论是否被 ldd 发现都带上
+    PKGS="$PKGS {{ ruby_runtime_packages | join(' ') }}"
+    echo "pkgs=$(echo $PKGS | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' ')"
+  args:
+    executable: /bin/bash
+  register: _ruby_runtime_probe
+  changed_when: false
+  when: ruby_offline_include_runtime_debs | bool
+
+- name: "[{{ ruby_install_method }}] 运行库 —— 记录待下载包清单"
+  ansible.builtin.set_fact:
+    _ruby_runtime_pkgs: >-
+      {{ (_ruby_runtime_probe.stdout | default('')
+          | regex_findall('pkgs=([^\n]*)') | first | default('', true)
+          | trim | split | reject('equalto', '') | list) }}
+  when: ruby_offline_include_runtime_debs | bool
+
+- name: "[{{ install_pkg_name }}] 运行库 —— 输出待下载清单"
+  ansible.builtin.debug:
+    msg: >-
+      {{ '无需补充运行库包' if _ruby_runtime_pkgs | length == 0
+         else '将下载 ' ~ (_ruby_runtime_pkgs | length | string)
+              ~ ' 个运行库包：' ~ (_ruby_runtime_pkgs | join(' ')) }}
+  when: ruby_offline_include_runtime_debs | bool
+
+- name: "[{{ install_pkg_name }}] 运行库 —— 下载 .deb"
+  ansible.builtin.shell: |
+    set -u
+    cd "{{ ruby_runtime_deb_dir }}" || exit 1
+    apt-get download {{ _ruby_runtime_pkgs | join(' ') }} 2>&1 | tail -5
+    echo "downloaded=$(ls -1 *.deb 2>/dev/null | wc -l)"
+  args:
+    executable: /bin/bash
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: _ruby_runtime_dl
+  changed_when: true
+  failed_when: false
+  retries: 2
+  delay: 5
+  until: "'downloaded=' in _ruby_runtime_dl.stdout | default('')"
+  when:
+    - ruby_offline_include_runtime_debs | bool
+    - _ruby_runtime_pkgs | length > 0
+
+- name: "[{{ install_pkg_name }}] 运行库 —— 输出下载结果"
+  ansible.builtin.debug:
+    msg: >-
+      {{ (_ruby_runtime_dl.stdout | default('')
+          | regex_findall('downloaded=([0-9]+)') | first | default('0', true))
+         ~ ' 个 .deb 已落到 ' ~ ruby_runtime_deb_dir }}
+  when:
+    - ruby_offline_include_runtime_debs | bool
+    - _ruby_runtime_pkgs | length > 0

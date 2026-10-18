@@ -1,0 +1,25 @@
+---
+# =============================================================================
+# install_nodejs —— 入口
+# =============================================================================
+# 顺序说明：
+#   1. include_vars —— 先求值 vars/main.yml（探测命令依赖 nvm_prefix）
+#   2. import_role install_base —— 提供基座任务库
+#   3. orchestrate —— contract → detect → decide → run
+#
+# nvm 依赖处理：
+#   node 的在线安装完全通过 nvm 完成，因此 nvm 必须先在位。
+#   nodejs_ensure_nvm=true 时，在线安装任务里会自动 include install_nvm；
+#   离线模式下 nvm 也需已存在（由 install_nvm 的离线包先行部署）。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 载入角色内部变量"
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/main.yml"
+
+- name: "[{{ install_pkg_name }}] 载入安装基座"
+  ansible.builtin.import_role:
+    name: install_base
+
+- name: "[{{ install_pkg_name }}] 执行基座编排"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/orchestrate.yml"

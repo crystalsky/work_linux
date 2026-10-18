@@ -1,0 +1,220 @@
+---
+# =============================================================================
+# install_nodejs —— 在线安装（通过 nvm）
+# =============================================================================
+# 流程：
+#   1. 确保 nvm 在场（必要则调用 install_nvm role）
+#   2. nvm install <major>  —— 下载官方二进制到 nvm 的版本目录
+#   3. nvm alias default <resolved>
+#   4. 生成 /usr/local/bin/{node,npm,npx,corepack} wrapper 脚本
+#   5. 写全局 npm 配置（registry / strict-ssl）
+#
+# 关键点：nvm 是 shell 函数，所有调用都必须
+#   bash -lc 或显式 `. nvm.sh`
+# 不能用 command 直接调 nvm。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 在线 —— 校验目标系统"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family in ['Debian', 'Ubuntu', 'RedHat']
+    fail_msg: "当前系统 {{ ansible_facts.distribution }} 不在支持列表内。"
+    quiet: true
+
+# -----------------------------------------------------------------------------
+# 依赖：nvm 本体
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 在线 —— 检查 nvm 是否已就绪"
+  ansible.builtin.stat:
+    path: "{{ nvm_prefix }}/nvm.sh"
+  register: _nodejs_nvm_sh
+
+- name: "[{{ install_pkg_name }}] 在线 —— 按需安装 nvm"
+  ansible.builtin.include_role:
+    name: install_nvm
+  vars:
+    install_mode: online
+    install_pkg_version: "0.40.8"
+  when:
+    - nodejs_ensure_nvm | bool
+    - not (_nodejs_nvm_sh.stat.exists | default(false))
+
+- name: "[{{ install_pkg_name }}] 在线 —— 校验 nvm 可用"
+  ansible.builtin.assert:
+    that:
+      - _nodejs_nvm_sh.stat.exists | default(false)
+    fail_msg: >-
+      nvm 不可用：未找到 {{ nvm_prefix }}/nvm.sh。
+      请先运行 playbooks/install_nvm.yml，或设置 nodejs_ensure_nvm=true。
+    quiet: true
+
+# -----------------------------------------------------------------------------
+# 用 nvm 安装 Node
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 在线 —— 解析可用版本"
+  ansible.builtin.shell: |
+    set -u
+    export NVM_DIR="{{ nvm_prefix }}"
+    . "{{ nvm_prefix }}/nvm.sh" >/dev/null 2>&1
+    nvm ls-remote "v{{ nodejs_major_version }}" 2>/dev/null \
+      | sed 's/\x1b\[[0-9;]*m//g' | tr -d ' ' \
+      | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | tail -1
+  args:
+    executable: /bin/bash
+  environment:
+    NVM_NODEJS_ORG_MIRROR: "{{ nodejs_org_mirror }}"
+  register: _nodejs_resolve
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 在线 —— 输出拟安装版本"
+  ansible.builtin.debug:
+    msg: >-
+      {{ '拟安装最新 ' ~ (_nodejs_resolve.stdout | trim)
+         if _nodejs_resolve.stdout | trim | length > 0
+         else '未解析到 v' ~ (nodejs_major_version | string) ~
+              ' 系列的可用版本，将直接交给 nvm install 处理' }}
+
+- name: "[{{ install_pkg_name }}] 在线 —— 用 nvm 安装 Node"
+  ansible.builtin.shell: |
+    set -eu
+    export NVM_DIR="{{ nvm_prefix }}"
+    . "{{ nvm_prefix }}/nvm.sh" >/dev/null 2>&1
+    nvm install "{{ nodejs_major_version }}" 2>&1 | tail -20
+  args:
+    executable: /bin/bash
+  environment:
+    NVM_NODEJS_ORG_MIRROR: "{{ nodejs_org_mirror }}"
+  register: _nodejs_install
+  changed_when: true
+
+- name: "[{{ install_pkg_name }}] 在线 —— 定位实际安装目录"
+  ansible.builtin.shell: |
+    set -u
+    ls -d "{{ nvm_prefix }}/versions/node/v{{ nodejs_major_version }}."* 2>/dev/null \
+      | sort -V | tail -1
+  args:
+    executable: /bin/bash
+  register: _nodejs_installdir
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 在线 —— 校验安装目录存在"
+  ansible.builtin.assert:
+    that:
+      - _nodejs_installdir.stdout | trim | length > 0
+    fail_msg: >-
+      nvm install 后未找到 v{{ nodejs_major_version }}.* 目录，
+      安装输出：{{ _nodejs_install.stdout | default('') }}
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 在线 —— 记录安装路径与版本名"
+  ansible.builtin.set_fact:
+    _nodejs_dir: "{{ _nodejs_installdir.stdout | trim }}"
+    _nodejs_ver: "{{ _nodejs_installdir.stdout | trim | basename }}"
+
+- name: "[{{ install_pkg_name }}] 在线 —— 设置 default 别名"
+  ansible.builtin.shell: |
+    set -eu
+    export NVM_DIR="{{ nvm_prefix }}"
+    . "{{ nvm_prefix }}/nvm.sh" >/dev/null 2>&1
+    nvm alias default "{{ _nodejs_ver }}" 2>&1
+  args:
+    executable: /bin/bash
+  register: _nodejs_alias
+  changed_when: true
+  when: nodejs_set_default | bool
+
+# -----------------------------------------------------------------------------
+# 暴露到系统 PATH（wrapper 脚本，写死绝对路径）
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 在线 —— 确保链接目录存在"
+  ansible.builtin.file:
+    path: "{{ nodejs_bin_link_dir }}"
+    state: directory
+    mode: "0755"
+  when: nodejs_link_commands | bool
+
+- name: "[{{ install_pkg_name }}] 在线 —— 生成命令 wrapper"
+  ansible.builtin.template:
+    src: node-wrapper.sh.j2
+    dest: "{{ nodejs_bin_link_dir }}/{{ item }}"
+    mode: "0755"
+  loop: "{{ nodejs_wrapper_commands }}"
+  when: nodejs_link_commands | bool
+
+# -----------------------------------------------------------------------------
+# npm 全局配置
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 在线 —— 写入全局 npm 配置"
+  ansible.builtin.copy:
+    dest: /etc/npmrc
+    mode: "0644"
+    content: |
+      ; 由 install_nodejs role 生成
+      {% if nodejs_npm_registry | length > 0 %}
+      registry={{ nodejs_npm_registry }}
+      {% endif %}
+      strict-ssl={{ 'true' if nodejs_npm_strict_ssl | bool else 'false' }}
+      fund=false
+      audit=false
+
+- name: "[{{ install_pkg_name }}] 在线 —— 安装全局 npm 包"
+  ansible.builtin.shell: |
+    set -eu
+    export NVM_DIR="{{ nvm_prefix }}"
+    . "{{ nvm_prefix }}/nvm.sh" >/dev/null 2>&1
+    nvm use "{{ _nodejs_ver }}" >/dev/null 2>&1
+    npm install -g {{ nodejs_npm_globals | join(' ') }}
+  args:
+    executable: /bin/bash
+  register: _nodejs_npm_global
+  changed_when: true
+  when: nodejs_npm_globals | length > 0
+
+- name: "[{{ install_pkg_name }}] 在线 —— 启用 corepack"
+  ansible.builtin.command:
+    argv: ["{{ nodejs_bin_link_dir }}/corepack", "enable"]
+  register: _nodejs_corepack
+  changed_when: _nodejs_corepack.rc == 0
+  when:
+    - nodejs_enable_corepack | bool
+    - nodejs_link_commands | bool
+
+# -----------------------------------------------------------------------------
+# 校验
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 在线 —— 校验 node/npm 可调用"
+  ansible.builtin.shell: |
+    set -u
+    echo "node=$("{{ nodejs_bin_link_dir }}/node" --version 2>&1 | head -1)"
+    echo "npm=$("{{ nodejs_bin_link_dir }}/npm" --version 2>&1 | head -1)"
+  args:
+    executable: /bin/bash
+  register: _nodejs_verify
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 在线 —— 记录实际版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ (_nodejs_verify.stdout | default('')
+          | regex_findall('node=v([0-9]+[.][0-9]+[.][0-9]+)') | first
+          | default('unknown', true)) }}
+
+- name: "[{{ install_pkg_name }}] 在线 —— 校验结果"
+  ansible.builtin.assert:
+    that:
+      - _nodejs_verify.stdout is search('node=v[0-9]+[.][0-9]+[.][0-9]+')
+    fail_msg: >-
+      node/npm 校验失败：
+      {{ _nodejs_verify.stdout | default('') }}
+      {{ _nodejs_verify.stderr | default('') }}
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 在线 —— 输出结果"
+  ansible.builtin.debug:
+    msg: >-
+      ✅ Node.js {{ install_pkg_version_actual }} 在线安装完成
+      ｜ 目录 {{ _nodejs_dir }}
+      ｜ default 别名 {{ _nodejs_ver if nodejs_set_default | bool else '未设置' }}

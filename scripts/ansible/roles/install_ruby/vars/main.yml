@@ -24,7 +24,9 @@ _install_rollback_paths: >-
 # deb  形态：apt 下载出的 .deb 目录
 # tree 形态：ruby_prefix 目录树
 _install_pack_sources: >-
-  {{ [ruby_deb_download_dir] if ruby_offline_format == 'deb' else [ruby_prefix] }}
+  {{ [ruby_deb_download_dir] if ruby_offline_format == 'deb'
+     else ([ruby_prefix] +
+           ([ruby_runtime_deb_dir] if ruby_offline_include_runtime_debs | bool else [])) }}
 
 _install_pack_exclude:
   - "*/.git/*"

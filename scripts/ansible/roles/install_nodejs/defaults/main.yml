@@ -1,0 +1,85 @@
+---
+# =============================================================================
+# install_nodejs —— 变量契约
+# =============================================================================
+# 通过 nvm 安装指定大版本的 Node.js：
+#   online  —— nvm install <major>（从 nodejs.org 或镜像下载二进制）
+#   offline —— 从离线包部署（tar.gz 内含 node 目录树 + 必要的 nvm 结构）
+#
+# 为什么用 nvm 而不是 apt / NodeSource：
+#   apt 的 nodejs 版本滞后且与系统包冲突；
+#   nvm 可多版本共存（22 / 24 同时装），切换只改 default 别名。
+#
+# 22 与 24 的差异仅由 nodejs_major_version 决定：
+#   playbooks/install_nodejs22.yml  → nodejs_major_version: 22
+#   playbooks/install_nodejs24.yml  → nodejs_major_version: 24
+#
+# 通用开关（install_mode / install_force / install_base_* 等）
+# 由 install_base 的 defaults 提供，本文件只放 nodejs 专属变量。
+# =============================================================================
+
+# ---------- install_base 契约 ----------
+# 注意：install_pkg_name 会决定状态文件名与离线包名，
+# 因此必须带大版本号，否则 22 与 24 会互相覆盖状态、复用同一个离线包。
+install_pkg_name: "nodejs{{ nodejs_major_version }}"
+
+# ---------- 目标版本 ----------
+# 大版本号：22 或 24（也可填完整版本如 22.21.1 锁定小版本）
+nodejs_major_version: 22
+# install_pkg_version 参与离线包命名，与 major 保持一致即可
+install_pkg_version: "{{ nodejs_major_version }}"
+
+# ---------- nvm 依赖 ----------
+# Node 通过 nvm 安装，因此需要 nvm 已就绪。
+# nvm 的位置与它必须一致（install_nvm 的默认值）。
+nvm_prefix: /opt/nvm
+nvm_profile_file: /etc/profile.d/nvm.sh
+# 是否由本 role 自动确保 nvm 存在（调用 install_nvm role）
+nodejs_ensure_nvm: true
+
+# ---------- Node 安装选项 ----------
+# 安装后是否设为 nvm default 别名（决定 `nvm use default` 用哪个版本）
+nodejs_set_default: true
+# 是否顺手启用 corepack（Node 16.9+ 自带，用于管理 yarn/pnpm）
+nodejs_enable_corepack: false
+# 是否安装全局 npm 包
+nodejs_npm_globals: []
+
+# ---------- Node 下载源 ----------
+# nvm 默认从 https://nodejs.org/dist 下载；
+# 国内建议 https://npmmirror.com/mirrors/node
+nodejs_org_mirror: ""
+# npm registry（写入全局 .npmrc）
+nodejs_npm_registry: ""
+# 是否启用 npm 的严格 SSL（内网自签证书场景可关）
+nodejs_npm_strict_ssl: true
+
+# ---------- 运行时暴露 ----------
+# 把 node/npm/npx/corepack 暴露到系统 PATH，
+# 使 ssh 非交互执行、systemd、cron 也能直接用（不必 source profile.d）
+nodejs_link_commands: true
+nodejs_bin_link_dir: /usr/local/bin
+nodejs_wrapper_commands:
+  - node
+  - npm
+  - npx
+  - corepack
+
+# ---------- 离线包来源 ----------
+offline_package_path: ""
+offline_package_url: ""
+offline_package_checksum: ""
+
+# ---------- 离线包补充件 ----------
+# 运行 node 需要系统基础库（libstdc++6 等），全新容器里可能缺失。
+# 开启后打包时把依赖闭包 .deb 一并带上，离线安装时用 dpkg -i 补装。
+nodejs_offline_include_runtime_debs: true
+nodejs_runtime_deb_dir: "{{ install_base_staging_dir }}/nodejs-runtime-deb"
+nodejs_runtime_packages:
+  - libstdc++6
+
+# ---------- install_base 钩子 ----------
+_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
+_install_prepack_tasks: >-
+  {{ role_path ~ '/tasks/pack_runtime_debs.yml'
+     if nodejs_offline_include_runtime_debs | bool else '' }}

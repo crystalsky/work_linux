@@ -52,18 +52,16 @@
     - _ruby_effective_method == 'apt'
     - not (_ruby_installed_ok | bool) or (install_force | default(false) | bool)
   block:
-    - name: "[{{ install_pkg_name }}] apt —— 等待包管理器空闲"
-      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
-
+    # 不使用 ansible.builtin.apt：该模块需要目标机 Python 自带 python3-apt。
+    # Ubuntu 20.04 的系统 Python 3.8 无法运行 Ansible 2.20，而镜像里的
+    # Python 3.12 又没有 apt_pkg 绑定。统一走 apt_compat.yml（apt-get 命令行）。
     - name: "[{{ install_pkg_name }}] apt —— 安装 ruby 及编译依赖"
-      ansible.builtin.apt:
-        name: "{{ ruby_apt_packages }}"
-        state: present
-        update_cache: true
-        dpkg_options: 'force-confdef,force-confold'
-        lock_timeout: "{{ install_base_apt_lock_timeout }}"
-      become: true
-      register: _ruby_apt_result
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+      vars:
+        _apt_pkgs: "{{ ruby_apt_packages }}"
+        _apt_state: present
+        _apt_update: true
+        _apt_cache_time: "{{ install_base_apt_cache_valid_time | default(3600) }}"
 
 # ---------- source 方式 ----------
 - name: "[{{ install_pkg_name }}] 在线 —— 通过源码编译安装"
@@ -71,20 +69,21 @@
     - _ruby_effective_method == 'source'
     - not (_ruby_installed_ok | bool) or (install_force | default(false) | bool)
   block:
-    - name: "[{{ install_pkg_name }}] source —— 等待包管理器空闲"
-      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
-
     - name: "[{{ install_pkg_name }}] source —— 解析源码包版本"
       ansible.builtin.import_tasks: "{{ role_path }}/tasks/resolve_source.yml"
 
-    - name: "[{{ install_pkg_name }}] source —— 安装编译依赖"
-      ansible.builtin.apt:
-        name: "{{ ruby_apt_packages + ruby_build_packages }}"
-        state: present
-        update_cache: true
-        dpkg_options: 'force-confdef,force-confold'
-        lock_timeout: "{{ install_base_apt_lock_timeout }}"
-      become: true
+    # 编译依赖 + 运行时动态库一起装：
+    # -dev 包给头文件，运行库包给 dlopen 时的 .so，
+    # 缺后者会导致 require "yaml" 报 libyaml-0.so.2 not found。
+    - name: "[{{ install_pkg_name }}] source —— 安装编译依赖与运行时库"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+      vars:
+        _apt_pkgs: >-
+          {{ ruby_apt_packages + ruby_build_packages +
+             (ruby_runtime_packages | default([])) }}
+        _apt_state: present
+        _apt_update: true
+        _apt_cache_time: "{{ install_base_apt_cache_valid_time | default(3600) }}"
 
     - name: "[{{ install_pkg_name }}] source —— 下载源码包"
       ansible.builtin.get_url:

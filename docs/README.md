@@ -42,6 +42,7 @@
 
 - **devops_ansible**
   - [Ansible 双模式软件运行环境安装基座（install_base + install_homebrew / install_ruby）](devops_ansible/20261018-ansible-dual-mode-install-base.md)（含 `scripts/ansible/`；online/offline 双模式、apt 国内镜像、包管理器等锁、快照回滚、状态标记、离线包制作分发）
+  - [Node.js 工具链双模式安装（nvm + Node 22/24）](devops_ansible/20261019-ansible-nodejs-nvm-dual-mode-install.md)（含 `roles/install_nvm`、`roles/install_nodejs`；nvm 共享前缀 `/opt/nvm`、22/24 共存、wrapper 解决 ssh 非交互、离线包 nvm 85 KB + nodejs 91 MB 随包 libstdc++6）
 - **devops_env_snapshot**
   - [Linux 开发环境整体离线快照（node/nvm + Homebrew 及 bottle 源 + Pi Agent 及插件技能 + oh-my-zsh）打包与复原手册](devops_env_snapshot/20261019-linux-devkit-offline-snapshot.md)（含 `scripts/devops/linux_devkit_pack.sh`；产物 `~/.work_linux_working/artifacts/linux-devkit-offline-20261019` 1.5 GB，bottle 57 个可直接当 HTTP 源，目标机 `install.sh --restore-cache` 一键复原 + `verify.sh` 自检）
 - **devops_docker**

@@ -1,0 +1,30 @@
+---
+# Node.js 24（通过 nvm 安装）
+#
+# 用法：
+#   uv run ansible-playbook playbooks/install_nodejs24.yml
+#   uv run ansible-playbook playbooks/install_nodejs24.yml \
+#     -e nodejs_org_mirror=https://npmmirror.com/mirrors/node
+#   uv run ansible-playbook playbooks/install_nodejs24.yml -e make_offline_package=true
+#   uv run ansible-playbook playbooks/install_nodejs24.yml -e install_mode=offline \
+#     -e offline_package_path=/workspace/nodejs24-24.tar.gz
+#
+# 说明：
+#   与 install_nodejs22 完全共用 install_nodejs role，差异仅在 nodejs_major_version。
+#   两个版本可共存：nvm 的版本目录互不覆盖，default 别名指向最后安装的那个；
+#   若要让 24 成为默认，直接跑本 playbook 即可（nodejs_set_default=true）。
+#
+- name: 安装 Node.js 24
+  hosts: ubuntu2004_sandbox
+  gather_facts: true
+  vars:
+    install_mode: online
+    nodejs_major_version: 24
+    nvm_prefix: /opt/nvm
+    # Node 二进制下载源：国内建议 npmmirror；留空用 nvm 官方默认
+    nodejs_org_mirror: "https://npmmirror.com/mirrors/node"
+    # 22 已设为 default 时，装 24 是否抢占 default。
+    # 需要 22/24 并存但保持 22 为默认时，改为 false。
+    nodejs_set_default: true
+  roles:
+    - install_nodejs

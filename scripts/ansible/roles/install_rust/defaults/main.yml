@@ -73,4 +73,19 @@ offline_package_checksum: ""
 # install_base 钩子
 # -----------------------------------------------------------------------------
 _install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
-_install_prepack_tasks: ""
+# 离线包是否额外附带系统编译依赖（build-essential 等）的 .deb。
+# rustc 本身能独立运行，但 cargo build 需要系统链接器 cc/gcc，
+# 该链接器属于系统包，不在 rust_prefix 目录里，
+# 全新容器（无 build-essential）里离线安装后会报：
+#   error: linker `cc` not found
+# 系统编译依赖：cargo build 需要链接器 cc/gcc，由 build-essential 提供。
+# 在线模式会实际安装它们；离线模式打包时下载它们的 .deb 一并分发。
+rust_build_packages:
+  - build-essential
+
+rust_offline_include_build_debs: true
+rust_build_deb_dir: "{{ install_base_staging_dir }}/rust-build-deb"
+
+_install_prepack_tasks: >-
+  {{ role_path ~ '/tasks/pack_build_debs.yml'
+     if rust_offline_include_build_debs | bool else '' }}

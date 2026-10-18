@@ -33,18 +33,39 @@
 # -----------------------------------------------------------------------------
 # 索引更新（可选）：用 /var/lib/apt/periodic/update-success-stamp 判断新鲜度
 # -----------------------------------------------------------------------------
-- name: "apt 兼容层 —— 检查索引更新时间戳"
-  ansible.builtin.stat:
-    path: /var/lib/apt/lists
-  register: _apt_stamp
+# 索引新鲜度判定不能只看目录 mtime：
+#   新建容器里 /var/lib/apt/lists 目录存在且 mtime 就是"现在"，
+#   但里面一个索引文件都没有，只看 mtime 会误判为"新鲜"而跳过 update，
+#   随后 apt-get install 全部报 "E: Unable to locate package"。
+# 因此必须同时检查目录内是否真有 Packages 索引文件。
+- name: "apt 兼容层 —— 检查索引状态"
+  ansible.builtin.shell: |
+    set -u
+    D=/var/lib/apt/lists
+    if [ ! -d "$D" ]; then
+      echo "exists=no"
+      echo "mtime=0"
+      echo "pkgs=0"
+      exit 0
+    fi
+    echo "exists=yes"
+    echo "mtime=$(stat -c %Y "$D" 2>/dev/null || echo 0)"
+    echo "pkgs=$(find "$D" -maxdepth 2 -name '*Packages*' -type f 2>/dev/null | wc -l)"
+  args:
+    executable: /bin/bash
+  register: _apt_stamp_raw
+  changed_when: false
   when: _apt_update | default(false) | bool
 
 - name: "apt 兼容层 —— 判定是否需要 apt-get update"
   ansible.builtin.set_fact:
     _apt_need_update: >-
-      {{ (not _apt_stamp.stat.exists) or
-         (_apt_stamp.stat.mtime | default(0) <
-          ansible_date_time.epoch | int - (_apt_cache_time | default(3600) | int)) }}
+      {{ ('exists=no' in _apt_stamp_raw.stdout | default('')) or
+         ((_apt_stamp_raw.stdout | default('')
+           | regex_findall('pkgs=(\d+)') | first | default('0', true) | int) == 0) or
+         ((_apt_stamp_raw.stdout | default('')
+           | regex_findall('mtime=(\d+)') | first | default('0', true) | int)
+          < (ansible_date_time.epoch | int - (_apt_cache_time | default(3600) | int))) }}
   when: _apt_update | default(false) | bool
 
 - name: "apt 兼容层 —— 执行 apt-get update"

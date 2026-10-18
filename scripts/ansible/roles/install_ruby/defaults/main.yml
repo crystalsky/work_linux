@@ -52,10 +52,25 @@ ruby_build_packages:
   - libreadline-dev
   - libgdbm-dev
   - libncurses-dev
-  - bison
+  - libgmp-dev
   - pkg-config
   - autoconf
-  - rustc
+  - bison
+
+# source 编译出的扩展模块在**运行时**仍需要对应的动态库（.so）。
+# -dev 包只提供头文件与 .so 软链，真正被 dlopen 的是运行库包，
+# 两者在全新容器里不一定同时存在。
+# 典型症状：require "yaml" 报
+#   libyaml-0.so.2: cannot open shared object file
+# 因此这里显式声明运行库，在线模式随编译依赖一起装，离线打包时也带上。
+#
+# 注意：运行库包名跨发行版不同（如 Debian 13 是 libssl3，Ubuntu 20.04 是
+# libssl1.1）。因此默认值只列「兼容面广、不随版本变化」的几个，
+# 其余由 offline_apply.yml 用 ldd + dpkg -S 自动反查补齐。
+ruby_runtime_packages:
+  - libyaml-0-2
+  - zlib1g
+  - libgmp10
 
 # ---------- 在线模式：源码编译 ----------
 ruby_source_mirror: "https://cache.ruby-lang.org/pub/ruby"
@@ -89,6 +104,13 @@ ruby_offline_format: "deb"
 # ---------- apt 下载（打离线包用） ----------
 ruby_deb_download_dir: "{{ install_base_staging_dir }}/ruby-deb"
 ruby_deb_include_depends: true
+
+# tree 形态（source 编译）离线包是否额外附带运行库 .deb。
+# source 编译出的扩展模块（psych.so/openssl.so…）在运行时 dlopen 系统动态库，
+# 这些库不在 ruby_prefix 里，全新容器里可能缺失，
+# 典型症状：require "yaml" 报 libyaml-0.so.2: cannot open shared object file。
+ruby_offline_include_runtime_debs: true
+ruby_runtime_deb_dir: "{{ install_base_staging_dir }}/ruby-runtime-deb"
 ruby_apt_download_opts:
   - --download-only
   - --reinstall
@@ -103,4 +125,6 @@ ruby_apt_download_opts:
 _install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
 # deb 形态需要先把 .deb 集合下载到 ruby_deb_download_dir 再打包
 _install_prepack_tasks: >-
-  {{ role_path ~ '/tasks/pack_debs.yml' if ruby_offline_format == 'deb' else '' }}
+  {{ role_path ~ '/tasks/pack_debs.yml' if ruby_offline_format == 'deb'
+     else (role_path ~ '/tasks/pack_runtime_debs.yml'
+           if ruby_offline_include_runtime_debs | bool else '') }}

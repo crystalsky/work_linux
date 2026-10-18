@@ -1,0 +1,52 @@
+---
+# =============================================================================
+# install_nvm —— 计算后的内部变量
+# =============================================================================
+
+# 探测命令：nvm.sh 存在且能正常 source 即视为已安装。
+# nvm 是 shell 函数库，没有可执行文件，因此用 bash -c source 后调用 nvm 验证。
+#
+# 注意：detect.yml 只用 rc 判定，「没装」必须返回非 0。
+# nvm.sh 无条件 source 成功也会返回 0，因此显式判断 nvm.sh 是否可读，
+# 且把 `nvm --version` 的输出作为成功标志。
+_install_probe_cmd: >-
+  bash -c 'if [ ! -r "{{ nvm_prefix }}/nvm.sh" ]; then exit 1; fi;
+  export NVM_DIR="{{ nvm_prefix }}";
+  . "{{ nvm_prefix }}/nvm.sh" >/dev/null 2>&1;
+  V=$(nvm --version 2>/dev/null);
+  if [ -n "$V" ]; then echo "$V"; else exit 1; fi'
+
+# nvm 全部装在 nvm_prefix 下，回滚时整体删除。
+# 注意 versions/ 是 node 版本的安装目的地，由 install_nodejs 管理；
+# 删 nvm 时一并清掉会让 node 一起消失，因此回滚只删 nvm 本体文件，
+# 通过 _install_rollback_paths 精确列出。
+_install_rollback_paths:
+  - "{{ nvm_prefix }}/nvm.sh"
+  - "{{ nvm_prefix }}/nvm-exec"
+  - "{{ nvm_prefix }}/bash_completion"
+  - "{{ nvm_prefix }}/install.sh"
+  - "{{ nvm_profile_file }}"
+
+# 打离线包时收集的路径
+_install_pack_sources:
+  - "{{ nvm_prefix }}"
+
+# 关键排除项：
+#   versions/  —— node 各版本目录（体积巨大且由 install_nodejs 独立管理）
+#   .cache/    —— nvm 下载 node 时缓存的 tar.xz（数十 MB）
+#   .git/ test/ .github/ —— 源码仓库附带物，运行时不需要
+_install_pack_exclude:
+  - "*/versions/*"
+  - "*/.cache/*"
+  - "*/.git/*"
+  - "*/.github/*"
+  - "*/test/*"
+  - "*/test-fast/*"
+  - "*/node_modules/*"
+
+# 解压后 nvm.sh 所在的候选目录名（GitHub archive 解开是 nvm-0.40.8/）
+_nvm_archive_dir_name: "nvm-{{ install_pkg_version }}"
+
+# 定位包内 nvm 根目录时优先尝试的相对路径
+_nvm_offline_layout_candidates:
+  - "{{ nvm_prefix }}"
