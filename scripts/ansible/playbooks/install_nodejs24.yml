@@ -15,7 +15,7 @@
 #   若要让 24 成为默认，直接跑本 playbook 即可（nodejs_set_default=true）。
 #
 - name: 安装 Node.js 24
-  hosts: ubuntu2004_sandbox
+  hosts: sandbox
   gather_facts: true
   vars:
     install_mode: online

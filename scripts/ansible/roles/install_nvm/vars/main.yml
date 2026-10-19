@@ -51,3 +51,6 @@ _nvm_archive_dir_name: "nvm-{{ install_pkg_version }}"
 # 定位包内 nvm 根目录时优先尝试的相对路径
 _nvm_offline_layout_candidates:
   - "{{ nvm_prefix }}"
+
+# 包内没有 install-offline.sh 时回退使用的落盘任务
+_install_offline_apply_tasks: "{{ role_path }}/tasks/offline_apply.yml"

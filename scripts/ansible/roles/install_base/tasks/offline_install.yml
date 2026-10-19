@@ -28,9 +28,18 @@
     - name: 离线安装 —— 解压离线包
       ansible.builtin.import_tasks: extract_package.yml
 
-    - name: 离线安装 —— 执行软件相关安装动作
+    # 两条落盘路径：
+    #   优先用包内自带的 install-offline.sh（Ansible 与人工解压共用同一份逻辑）
+    #   旧包没有该脚本时回退到 role 的 offline_apply.yml
+    - name: 离线安装 —— 执行安装（包内脚本优先）
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/run_installer.yml"
+      when: install_base_use_embedded_installer | default(true) | bool
+
+    - name: 离线安装 —— 执行软件相关安装动作（旧路径）
       ansible.builtin.include_tasks: "{{ role_path }}/tasks/offline_apply.yml"
-      when: _install_has_offline_apply | default(true) | bool
+      when:
+        - not (install_base_use_embedded_installer | default(true) | bool)
+        - _install_has_offline_apply | default(true) | bool
 
 - name: 离线安装 —— 写状态标记
   ansible.builtin.import_tasks: write_state.yml

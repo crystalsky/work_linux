@@ -72,11 +72,15 @@
 
     # apt 类 role 的「安装产物」不是目录树，而是要额外收集的包文件。
     # role 通过 _install_prepack_tasks 提供自己的准备步骤。
+    #
+    # 注意：不能写成 install_state != 'absent'。
+    # 探测为 absent 时上面刚做完一次在线安装，此时 install_state 仍是旧值，
+    # 但真正走了安装分支，prepack（如收集 .deb、渲染 wrapper）必须执行；
+    # 反过来若探测为 partial（比如手工装过但无状态标记），更需要 prepack。
+    # 所以只有在「本次没装任何东西」即 skip 时才跳过 prepack。
     - name: "[{{ install_pkg_name }}] 打包前准备产物集合"
       ansible.builtin.include_tasks: "{{ _install_prepack_tasks }}"
-      when:
-        - _install_prepack_tasks | default('') | length > 0
-        - install_state != 'absent'
+      when: _install_prepack_tasks | default('') | length > 0
 
     - name: "[{{ install_pkg_name }}] 打包并分发"
       ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/make_offline_package.yml"

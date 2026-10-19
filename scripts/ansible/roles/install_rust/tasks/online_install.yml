@@ -15,20 +15,28 @@
 #    curl / ca-certificates 是 rustup-init 下载工具链的硬依赖；
 #    build-essential 是编译含 C 代码 crate（openssl-sys 等）的硬依赖
 # -----------------------------------------------------------------------------
-# 注意：不使用 ansible.builtin.apt —— 该模块需要目标机 Python 自带 python3-apt，
-# Ubuntu 20.04 的 3.8 太旧无法运行 Ansible 2.20，3.12 又没有 apt_pkg 绑定。
-# 统一走 install_base 的 apt_compat.yml（apt-get 命令行 + 幂等判定）。
+# 注意：不使用 ansible.builtin.apt / dnf 模块 ——
+#   apt 模块需要目标机 Python 有 python3-apt（Ubuntu 20.04 的 3.8 太旧不能跑
+#   Ansible 2.20，3.12 又没有 apt_pkg 绑定）；
+#   dnf 模块需要 python3-dnf（CentOS Stream 8 只有 python3.6 版本，Ansible 用的
+#   3.9 没有绑定）。
+# 因此统一走 install_base 的 apt_compat.yml / dnf_compat.yml（命令行 + 幂等判定）。
+- name: "安装 —— 选择包管理器兼容层"
+  ansible.builtin.set_fact:
+    _rust_pkgmgr_tasks: >-
+      {{ install_base_tasks_dir ~ '/' ~
+         ('apt_compat.yml' if install_base_facts.pkg_mgr == 'apt' else 'dnf_compat.yml') }}
+
 - name: "安装 —— rustup 依赖的基础包"
-  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+  ansible.builtin.include_tasks: "{{ _rust_pkgmgr_tasks }}"
   vars:
-    _apt_pkgs:
-      - curl
-      - ca-certificates
-      - build-essential
-      - pkg-config
+    _apt_pkgs: "{{ rust_prereq_packages_apt }}"
     _apt_state: present
     _apt_update: true
     _apt_cache_time: 3600
+    _dnf_pkgs: "{{ rust_prereq_packages_dnf }}"
+    _dnf_state: present
+    _dnf_update: true
 
 # -----------------------------------------------------------------------------
 # 2. 准备目录：RUSTUP_HOME / CARGO_HOME 统一到 rust_prefix 下，便于整树打包

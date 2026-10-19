@@ -38,11 +38,18 @@ ruby_make_jobs: ""
 ruby_bin_link_dir: /usr/local/bin
 
 # ---------- 在线模式：apt ----------
+# apt 模式（用发行版自带 ruby）的包名
 ruby_apt_packages:
   - ruby
   - ruby-dev
+ruby_apt_packages_dnf:
+  - ruby
+  - ruby-devel
 
 # source 模式额外需要的编译依赖（apt 模式只装 ruby_apt_packages）
+# 不同发行版包名差异很大，按 pkg_mgr 分流：
+#   dnf 系没有 build-essential（对应 gcc gcc-c++ make），
+#   且 -dev 包统一叫 -devel，openssl 头文件包叫 openssl-devel。
 ruby_build_packages:
   - build-essential
   - zlib1g-dev
@@ -56,6 +63,22 @@ ruby_build_packages:
   - pkg-config
   - autoconf
   - bison
+ruby_build_packages_dnf:
+  - gcc
+  - gcc-c++
+  - make
+  - zlib-devel
+  - openssl-devel
+  - libyaml-devel
+  - libffi-devel
+  - readline-devel
+  - gdbm-devel
+  - ncurses-devel
+  - gmp-devel
+  - pkgconf-pkg-config
+  - autoconf
+  - bison
+  - kernel-headers
 
 # source 编译出的扩展模块在**运行时**仍需要对应的动态库（.so）。
 # -dev 包只提供头文件与 .so 软链，真正被 dlopen 的是运行库包，
@@ -71,6 +94,11 @@ ruby_runtime_packages:
   - libyaml-0-2
   - zlib1g
   - libgmp10
+# dnf 系运行库包名（CentOS/RHEL 是 libyaml / zlib / gmp）
+ruby_runtime_packages_dnf:
+  - libyaml
+  - zlib
+  - gmp
 
 # ---------- 在线模式：源码编译 ----------
 ruby_source_mirror: "https://cache.ruby-lang.org/pub/ruby"
@@ -128,3 +156,7 @@ _install_prepack_tasks: >-
   {{ role_path ~ '/tasks/pack_debs.yml' if ruby_offline_format == 'deb'
      else (role_path ~ '/tasks/pack_runtime_debs.yml'
            if ruby_offline_include_runtime_debs | bool else '') }}
+
+# source 模式离线包是否携带编译依赖（gem 装原生扩展需要 gcc/make）
+ruby_offline_include_build_debs: true
+ruby_build_deb_dir: "{{ install_base_staging_dir }}/ruby-build-deps"

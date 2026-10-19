@@ -78,14 +78,34 @@ _install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
 # 该链接器属于系统包，不在 rust_prefix 目录里，
 # 全新容器（无 build-essential）里离线安装后会报：
 #   error: linker `cc` not found
-# 系统编译依赖：cargo build 需要链接器 cc/gcc，由 build-essential 提供。
-# 在线模式会实际安装它们；离线模式打包时下载它们的 .deb 一并分发。
-rust_build_packages:
+# 系统编译依赖：cargo build 需要链接器 cc/gcc。
+# 不同发行版包名不同，按 pkg_mgr 分流：
+#   apt 系  → build-essential（元包，展开后是 gcc/g++/make/libc6-dev 等）
+#   dnf 系  → gcc gcc-c++ make glibc-devel（CentOS/RHEL 没有 build-essential）
+# 在线模式会实际安装；离线模式打包时下载对应发行版的包文件一并分发。
+rust_build_packages_apt:
   - build-essential
+rust_build_packages_dnf:
+  - gcc
+  - gcc-c++
+  - make
+  - glibc-devel
+  - kernel-headers
 
-rust_offline_include_build_debs: true
-rust_build_deb_dir: "{{ install_base_staging_dir }}/rust-build-deb"
+# rustup-init 运行与 cargo 编译所需的基础包（在线模式会实际安装）
+rust_prereq_packages_apt:
+  - curl
+  - ca-certificates
+  - pkg-config
+rust_prereq_packages_dnf:
+  - curl
+  - ca-certificates
+  - pkgconf-pkg-config
 
-_install_prepack_tasks: >-
-  {{ role_path ~ '/tasks/pack_build_debs.yml'
-     if rust_offline_include_build_debs | bool else '' }}
+rust_offline_include_build_deps: true
+rust_build_deb_dir: "{{ install_base_staging_dir }}/rust-build-deps"
+
+# prepack 钩子始终指向 pack_prepare.yml：
+#   它内部先渲染包内自包含安装脚本所需的 wrapper/profile，
+#   再按 rust_offline_include_build_deps 决定是否收集构建依赖包文件。
+_install_prepack_tasks: "{{ role_path }}/tasks/pack_prepare.yml"

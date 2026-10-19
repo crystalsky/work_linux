@@ -43,6 +43,19 @@ nvm_nodejs_org_mirror: ""
 # 是否在 profile 里自动 `nvm use default`（关闭可避免非交互 shell 报错）
 nvm_autoload: true
 # 传给 nvm 的额外环境（如 NVM_SILENT）
+# nvm / node 运行所需的基础命令（在线模式会实际安装）
+nvm_prereq_packages_apt:
+  - curl
+  - ca-certificates
+  - tar
+  - gzip
+nvm_prereq_packages_dnf:
+  - curl
+  - ca-certificates
+  - tar
+  - gzip
+  - which
+
 nvm_runtime_env: {}
 nvm_verify: true
 

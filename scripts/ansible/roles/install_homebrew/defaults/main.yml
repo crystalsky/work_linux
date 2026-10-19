@@ -71,6 +71,18 @@ brew_apt_prereqs:
   - file
   - wget
 
+# dnf 系等价包名（procps-ng 而不是 procps，其余同名）
+brew_prereq_packages_dnf:
+  - git
+  - curl
+  - ca-certificates
+  - gcc
+  - gcc-c++
+  - make
+  - procps-ng
+  - file
+  - wget
+
 # ---------- 离线包 ----------
 # 离线包的来源，由 playbook / group_vars 传入
 offline_package_path: ""

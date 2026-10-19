@@ -23,3 +23,6 @@ _install_pack_exclude:
   - "*/cache/downloads/*"
   - "*/Cellar/*/*/.brew/*.lock"
   - "*/logs/*"
+
+# 包内没有 install-offline.sh 时回退使用的落盘任务
+_install_offline_apply_tasks: "{{ role_path }}/tasks/offline_apply.yml"

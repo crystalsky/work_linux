@@ -1,0 +1,98 @@
+---
+# =============================================================================
+# install_rust —— 打包前准备（prepack 钩子入口）
+# =============================================================================
+# 顺序很重要：
+#   1. 渲染包内自包含安装脚本所需的 wrapper / profile
+#   2. 收集构建依赖包（cargo build 需要系统链接器 cc/gcc）
+#
+# 关于依赖包：
+#   不拷贝任何系统 .so，只下载发行版官方包文件（.deb / .rpm），
+#   由目标机的包管理器安装。这样跨发行版、跨 glibc 版本都安全。
+#   具体收集逻辑在 install_base/tasks/collect_deps.yml（deb / dnf 双实现）。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 包内附件 —— 清空暂存目录"
+  ansible.builtin.file:
+    path: "{{ install_base_staging_dir }}/rust-pack-installer"
+    state: absent
+  become: true
+
+- name: "[{{ install_pkg_name }}] 包内附件 —— 创建子目录"
+  ansible.builtin.file:
+    path: "{{ install_base_staging_dir }}/rust-pack-installer/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - wrappers
+    - profile.d
+  become: true
+
+- name: "[{{ install_pkg_name }}] 包内附件 —— 校验包内安装产物存在"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: _rust_pack_src_stat
+  loop:
+    - "{{ rust_cargo_home }}/bin"
+    - "{{ rust_rustup_home }}/toolchains"
+  failed_when: not _rust_pack_src_stat.stat.exists
+
+- name: "[{{ install_pkg_name }}] 包内附件 —— 渲染 wrapper 与 profile 到暂存目录"
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item.tpl }}"
+    dest: "{{ install_base_staging_dir }}/rust-pack-installer/{{ item.dest }}"
+    mode: "{{ item.mode }}"
+  vars:
+    _wrapper_cmd: "{{ item.dest | basename }}"
+  loop:
+    - { tpl: "rust-wrapper-standalone.sh.j2", dest: "wrappers/cargo", mode: "0755" }
+    - { tpl: "rust-wrapper-standalone.sh.j2", dest: "wrappers/rustc", mode: "0755" }
+    - { tpl: "rust-wrapper-standalone.sh.j2", dest: "wrappers/rustup", mode: "0755" }
+    - { tpl: "rust.sh.j2", dest: "profile.d/rust.sh", mode: "0644" }
+  loop_control:
+    label: "{{ item.dest }}"
+  become: true
+  changed_when: true
+
+- name: "[{{ install_pkg_name }}] 包内附件 —— 校验 wrapper 语法"
+  ansible.builtin.command:
+    argv: [sh, -n, "{{ install_base_staging_dir }}/rust-pack-installer/wrappers/cargo"]
+  register: _rust_pack_wrapper_syntax
+  changed_when: false
+  failed_when: _rust_pack_wrapper_syntax.rc != 0
+
+# -----------------------------------------------------------------------------
+# 构建依赖：不同发行版包名不同，这里按 pkg_mgr 分流
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 依赖 —— 解析本发行版对应的包名"
+  ansible.builtin.set_fact:
+    _rust_dep_pkgs: >-
+      {{ rust_build_packages_apt if install_base_facts.pkg_mgr == 'apt'
+         else rust_build_packages_dnf }}
+
+- name: "[{{ install_pkg_name }}] 依赖 —— 选择包管理器兼容层"
+  ansible.builtin.set_fact:
+    _rust_pkgmgr_tasks: >-
+      {{ install_base_tasks_dir ~ '/' ~
+         ('apt_compat.yml' if install_base_facts.pkg_mgr == 'apt' else 'dnf_compat.yml') }}
+
+- name: "[{{ install_pkg_name }}] 依赖 —— 先确保依赖已安装"
+  ansible.builtin.include_tasks: "{{ _rust_pkgmgr_tasks }}"
+  vars:
+    _apt_pkgs: "{{ _rust_dep_pkgs }}"
+    _apt_update: true
+    _dnf_pkgs: "{{ _rust_dep_pkgs }}"
+    _dnf_update: true
+  when: rust_offline_include_build_deps | bool
+
+- name: "[{{ install_pkg_name }}] 依赖 —— 收集发行版包文件"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/collect_deps.yml"
+  vars:
+    _dep_pkg_names: "{{ _rust_dep_pkgs }}"
+    _dep_download_dir: "{{ rust_build_deb_dir }}"
+  when: rust_offline_include_build_deps | bool
+
+- name: "[{{ install_pkg_name }}] 包内附件 —— 输出清单"
+  ansible.builtin.debug:
+    msg: >-
+      wrapper/profile 已就绪；依赖包：{{ _dep_result.summary | default('未收集') }}

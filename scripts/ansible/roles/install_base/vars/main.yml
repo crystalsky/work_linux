@@ -20,3 +20,34 @@ install_base_pkg_mgr_map:
   AlmaLinux: dnf
   CentOS: dnf
   RedHat: dnf
+
+# -----------------------------------------------------------------------------
+# 内部路径推导（role 的 vars 与 install_base 的 tasks 共用）
+#   全部放 vars/ 而非 defaults/：属于内部推导值，不应被用户覆盖。
+# -----------------------------------------------------------------------------
+# 构建与解包工作目录
+_install_pkg_workdir: "{{ install_base_staging_dir }}/{{ install_pkg_name }}"
+
+# 离线包解压后的目录（与工作目录分开，避免 cp/mv 时和自身交叠）
+_install_pkg_extract_dir: "{{ _install_pkg_workdir }}/extract"
+
+# 离线包在目标机缓存目录中的落地文件名
+_install_pkg_local_file: >-
+  {{ install_base_cache_dir ~ '/' ~ _install_pkg_basename }}
+
+# 离线包文件名（不含目录）
+# 离线包文件名规范化：<软件>-<版本>-<发行版><主版本>-<架构>.tar.gz
+# 例：rust-stable-centos8-x86_64.tar.gz / ruby-3.4-ubuntu20-x86_64.tar.gz
+# 为什么要带发行版：包内是发行版专属的系统包文件（.deb / .rpm），
+# 跨发行版直接安装会失败，靠文件名先把边界表达清楚。
+_install_distro_tag: >-
+  {{ (install_base_facts.os_distribution | default('unknown') | lower)
+     ~ (install_base_facts.os_release | default('') | string) }}
+_install_pkg_basename: >-
+  {{ [install_pkg_name, install_pkg_version, _install_distro_tag,
+      install_base_facts.arch | default('unknown')] | join('-') }}.tar.gz
+
+# 每包状态标记文件路径
+#   detect.yml / write_state.yml / rollback.yml 均引用此变量。
+#   例：/var/lib/ansible-install-state/ruby.json
+_install_pkg_state_file: "{{ install_base_state_dir }}/{{ install_pkg_name }}.json"

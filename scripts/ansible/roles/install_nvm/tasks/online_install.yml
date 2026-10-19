@@ -21,17 +21,22 @@
       当前系统 {{ ansible_facts.distribution }} 不在支持列表内。
     quiet: true
 
-- name: "[{{ install_pkg_name }}] 在线 —— 确保基础工具就绪"
+- name: "[{{ install_pkg_name }}] 在线 —— 确保基础工具就绪（apt）"
   ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
   vars:
-    _apt_pkgs:
-      - curl
-      - ca-certificates
-      - tar
-      - gzip
+    _apt_pkgs: "{{ nvm_prereq_packages_apt }}"
     _apt_state: present
     _apt_update: true
     _apt_cache_time: 3600
+  when: install_base_facts.pkg_mgr == 'apt'
+
+- name: "[{{ install_pkg_name }}] 在线 —— 确保基础工具就绪（dnf）"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/dnf_compat.yml"
+  vars:
+    _dnf_pkgs: "{{ nvm_prereq_packages_dnf }}"
+    _dnf_state: present
+    _dnf_update: true
+  when: install_base_facts.pkg_mgr == 'dnf'
 
 - name: "[{{ install_pkg_name }}] 在线 —— 创建暂存目录"
   ansible.builtin.file:

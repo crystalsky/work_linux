@@ -3,7 +3,8 @@
 # Rust 工具链安装 —— Ubuntu 20.04 沙箱
 # =============================================================================
 # 用法：
-#   # 在线安装（默认 stable）
+#   # 在线安装（默认 stable），限定单台
+#   uv run ansible-playbook playbooks/install_rust.yml --limit ubuntu2004_sandbox
 #   uv run ansible-playbook playbooks/install_rust.yml
 #
 #   # 在线安装并指定版本
@@ -15,10 +16,13 @@
 #   # 离线安装（离线包已在 /workspace 下）
 #   uv run ansible-playbook playbooks/install_rust.yml \
 #     -e install_mode=offline \
-#     -e offline_package_path=/workspace/rust-stable.tar.gz
+#     -e offline_package_path=/workspace/rust-stable-ubuntu20-x86_64.tar.gz
 # =============================================================================
 - name: "安装 Rust 工具链（双模式）"
-  hosts: ubuntu2004_sandbox
+  # 用 sandbox 分组：debian13_sandbox / ubuntu2004_sandbox / centos8_sandbox
+  # 都在这个组里，跨发行版验证时不用改 playbook。
+  # 单台验证用 --limit 指定即可。
+  hosts: sandbox
   gather_facts: true
 
   vars:

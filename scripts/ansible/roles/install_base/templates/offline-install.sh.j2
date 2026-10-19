@@ -1,0 +1,622 @@
+#!/usr/bin/env bash
+# =============================================================================
+# {{ install_pkg_name }} {{ install_pkg_version }} —— 离线安装脚本
+# =============================================================================
+# 本脚本由 Ansible role 在线安装成功后自动打包生成，随离线包一起分发。
+# 两种入口共用同一套落盘逻辑，结果一致：
+#
+#   1) Ansible 编排（推荐，成规模时）
+#        ansible-playbook playbooks/install_{{ install_pkg_name }}.yml \
+#          -e install_mode=offline \
+#          -e offline_package_path=/path/to/{{ _install_pkg_basename }}
+#
+#   2) 直接执行（无 Ansible 环境）
+#        tar -xzf {{ _install_pkg_basename }} -C /tmp/pkg
+#        sudo /tmp/pkg/{{ offline_installer_name }}
+#
+#   先预览再动手（强烈建议首次执行时先 dry-run）：
+#        sudo /tmp/pkg/{{ offline_installer_name }} --dry-run
+#
+# 打包信息：
+#   构建时间 : {{ _offline_build_time | default('') }}
+#   构建主机 : {{ inventory_hostname }}
+#   目标系统 : {{ _offline_build_distro | default('') }} / {{ _offline_build_arch | default('') }}
+# =============================================================================
+set -euo pipefail
+
+# -----------------------------------------------------------------------------
+# 打包时固化的参数（可用命令行参数或环境变量覆盖）
+# -----------------------------------------------------------------------------
+PKG_NAME="{{ install_pkg_name }}"
+PKG_VERSION="{{ install_pkg_version }}"
+PKG_ARCH="{{ _offline_build_arch | default(install_base_facts.arch) }}"
+PKG_DISTRO="{{ _offline_build_distro | default(install_base_facts.os_distribution) }}"
+PKG_DISTRO_VERSION="{{ _offline_build_distro_version | default(install_base_facts.os_release) }}"
+
+# 脚本自身所在目录 = 解包根目录
+STAGE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 安装与运行所需属主
+TARGET_USER="${TARGET_USER:-{{ _offline_target_user | default('root') }}}"
+TARGET_GROUP="${TARGET_GROUP:-{{ _offline_target_group | default('root') }}}"
+
+# 状态标记目录（与 Ansible 路径保持一致，避免两套安装方式互相看不见）
+STATE_DIR="${STATE_DIR:-{{ install_base_state_dir }}}"
+
+# 软件主安装前缀
+PREFIX="${PREFIX:-{{ _offline_prefix | default('') }}}"
+
+# 探测命令（与 role 的 _install_probe_cmd 一致，用于幂等与版本冲突判断）
+PROBE_CMD='{{ _offline_probe_cmd | default('') | replace("'", "'\\''") }}'
+
+# 目标机必需的基础命令（缺失则直接中止，否则后续 cp/tar 会报奇怪的错）
+REQUIRED_CMDS="{{ _offline_required_cmds | default(['tar', 'gzip', 'cp', 'mv', 'chmod']) | join(' ') }}"
+
+# 目标机必需的系统包（用 dpkg-query 检查；空表示不检查）
+REQUIRED_PKGS="{{ _offline_required_pkgs | default([]) | join(' ') }}"
+
+# 最低磁盘余量（MB），装到 PREFIX 所在分区
+REQUIRED_DISK_MB="{{ _offline_required_disk_mb | default(512) }}"
+
+FORCE=0
+DRY_RUN=0
+SKIP_DEPS=0
+UNINSTALL=0
+UPGRADE=0
+JSON_OUT=0
+
+# -----------------------------------------------------------------------------
+# 输出 helpers
+# -----------------------------------------------------------------------------
+if [ -t 1 ]; then
+  C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_INFO=$'\033[36m'; C_RST=$'\033[0m'
+else
+  C_OK=''; C_WARN=''; C_ERR=''; C_INFO=''; C_RST=''
+fi
+
+info() { printf '%s[*]%s %s\n' "$C_INFO" "$C_RST" "$*"; }
+ok()   { printf '%s[✓]%s %s\n' "$C_OK"   "$C_RST" "$*"; }
+warn() { printf '%s[!]%s %s\n' "$C_WARN" "$C_RST" "$*" >&2; }
+err()  { printf '%s[✗]%s %s\n' "$C_ERR"  "$C_RST" "$*" >&2; }
+die()  { err "$*"; [ "${JSON_OUT}" -eq 1 ] && emit_json "failed" "$*"; exit 1; }
+
+# emit_json —— 给 Ansible 等编排器消费的结构化结果
+emit_json() {
+  local result="$1"; shift
+  local msg="${1:-}"
+  printf '{"pkg":"%s","version":"%s","result":"%s","installed_version":"%s","message":"%s","mode":"offline-script"}\n' \
+    "${PKG_NAME}" "${PKG_VERSION}" "${result}" "${INSTALLED_VERSION:-}" "$(printf '%s' "${msg}" | sed 's/"/\\"/g')"
+}
+
+usage() {
+  local pkg_name="${PKG_NAME}" pkg_version="${PKG_VERSION}"
+  local tgt_user="${TARGET_USER}" tgt_group="${TARGET_GROUP}"
+  local prefix_show="${PREFIX:-（未设置）}" state_show="${STATE_DIR}"
+  cat <<USAGE
+${pkg_name} ${pkg_version} —— 离线安装脚本
+
+用法:
+  sudo ./$(basename "$0") [选项]
+
+选项:
+  -h, --help              显示本帮助
+  -n, --dry-run           只打印将执行的动作，不实际修改系统
+  -f, --force             无视已有安装，强制重装
+      --upgrade           已装版本与目标版本不同时，允许覆盖升级
+      --skip-deps         跳过随包 .deb 依赖补装
+      --uninstall         卸载（删除安装目录、wrapper 与状态标记）
+      --json              输出单行 JSON 结果（供 Ansible 等编排器消费）
+  -u, --user  <用户名>    安装产物属主（默认 ${tgt_user}）
+  -g, --group <组名>      安装产物属组（默认 ${tgt_group}）
+  -p, --prefix <路径>     覆盖安装前缀（默认 ${prefix_show}）
+      --state-dir <路径>  状态标记目录（默认 ${state_show}）
+
+环境变量:
+  TARGET_USER / TARGET_GROUP / PREFIX / STATE_DIR 与上述参数等价
+
+退出码:
+  0  安装成功 / 已是最新（skip）
+  1  环境不满足（依赖缺失、架构不符、版本冲突未加 --upgrade 等）
+  2  安装过程中失败（已尽力回滚）
+
+安装内容:
+{% for p in _offline_install_paths | default([]) %}
+  - {{ p.src }}  →  {{ p.dest }}
+{% endfor %}
+{% if _offline_install_files | default([]) | length > 0 %}
+生成文件:
+{% for f in _offline_install_files %}
+  - {{ f.path }}
+{% endfor %}
+{% endif %}
+USAGE
+}
+
+# -----------------------------------------------------------------------------
+# 参数解析
+# -----------------------------------------------------------------------------
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)     usage; exit 0 ;;
+    -n|--dry-run)  DRY_RUN=1; shift ;;
+    -f|--force)    FORCE=1; shift ;;
+    --upgrade)     UPGRADE=1; shift ;;
+    --skip-deps)   SKIP_DEPS=1; shift ;;
+    --uninstall)   UNINSTALL=1; shift ;;
+    --json)        JSON_OUT=1; shift ;;
+    -u|--user)     TARGET_USER="${2:?缺少用户名}"; shift 2 ;;
+    -g|--group)    TARGET_GROUP="${2:?缺少组名}"; shift 2 ;;
+    -p|--prefix)   PREFIX="${2:?缺少路径}"; shift 2 ;;
+    --state-dir)   STATE_DIR="${2:?缺少路径}"; shift 2 ;;
+    *)             die "未知参数：$1（用 --help 查看用法）" ;;
+  esac
+done
+
+STATE_FILE="${STATE_DIR}/${PKG_NAME}.json"
+INSTALLED_VERSION=""
+ACTION="install"
+
+# -----------------------------------------------------------------------------
+# 工具函数
+# -----------------------------------------------------------------------------
+require_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    die "需要 root 权限，请用 sudo 执行"
+  fi
+}
+
+# 探测版本号：优先用 PROBE_CMD（与 Ansible 一致），退回状态文件
+detect_version() {
+  local raw=""
+  if [ -n "${PROBE_CMD}" ]; then
+    raw="$(bash -c "${PROBE_CMD}" 2>/dev/null || true)"
+  fi
+  if [ -z "${raw// /}" ] && [ -f "${STATE_FILE}" ]; then
+    raw="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${STATE_FILE}" | head -1)"
+  fi
+  printf '%s' "${raw}"
+}
+
+# 从探测输出里抽出纯版本号，便于比较
+normalize_version() {
+  local v="$1"
+  printf '%s' "$v" | grep -oE '[0-9]+(\.[0-9]+)+' | head -1 || true
+}
+
+# -----------------------------------------------------------------------------
+# 步骤 1 —— 环境自检
+# -----------------------------------------------------------------------------
+step_precheck() {
+  info "── 1/7 环境自检 ──"
+  require_root
+
+  # 架构
+  local mach
+  mach="$(uname -m)"
+  if [ "${mach}" != "${PKG_ARCH}" ]; then
+    die "架构不符：本机 ${mach}，离线包为 ${PKG_ARCH}。请使用对应架构的离线包。"
+  fi
+  ok "架构匹配（${mach}）"
+
+  # 发行版（只警告不阻断：同族发行版通常可用）
+  if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    local cur_distro="${ID:-unknown}" cur_ver="${VERSION_ID:-unknown}"
+    if [ -n "${PKG_DISTRO}" ] && [ "${cur_distro}" != "$(printf '%s' "${PKG_DISTRO}" | tr '[:upper:]' '[:lower:]')" ]; then
+      warn "发行版不同：本机 ${cur_distro} ${cur_ver}，包构建于 ${PKG_DISTRO} ${PKG_DISTRO_VERSION}"
+      warn "跨发行版安装可能因 glibc / 系统库版本不同而失败，请确认后再继续"
+    else
+      ok "发行版匹配（${cur_distro} ${cur_ver}）"
+    fi
+  fi
+
+  # 基础命令
+  local miss=""
+  for c in ${REQUIRED_CMDS}; do
+    command -v "$c" >/dev/null 2>&1 || miss="${miss} $c"
+  done
+  [ -z "${miss}" ] || die "缺少基础命令：${miss}。请先安装后再试。"
+  ok "基础命令齐备（${REQUIRED_CMDS}）"
+
+  # 必需系统包
+  if [ -n "${REQUIRED_PKGS}" ] && command -v dpkg-query >/dev/null 2>&1; then
+    local misspkg=""
+    for p in ${REQUIRED_PKGS}; do
+      dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "install ok installed" \
+        || misspkg="${misspkg} $p"
+    done
+    if [ -n "${misspkg}" ]; then
+      warn "缺少系统包：${misspkg}（若离线包内附带 .deb 将自动补装）"
+    else
+      ok "系统包齐备（${REQUIRED_PKGS}）"
+    fi
+  fi
+
+  # 磁盘余量
+  local chk="${PREFIX:-/}"
+  while [ ! -d "${chk}" ] && [ "${chk}" != "/" ]; do chk="$(dirname "${chk}")"; done
+  local avail
+  avail="$(df -Pm "${chk}" 2>/dev/null | awk 'NR==2 {print $4}')"
+  if [ -n "${avail}" ] && [ "${avail}" -lt "${REQUIRED_DISK_MB}" ]; then
+    die "磁盘余量不足：${chk} 仅剩 ${avail}MB，需要至少 ${REQUIRED_DISK_MB}MB"
+  fi
+  ok "磁盘余量充足（${chk} 剩余 ${avail:-未知}MB，要求 ${REQUIRED_DISK_MB}MB）"
+}
+
+# -----------------------------------------------------------------------------
+# 步骤 2 —— 幂等与版本冲突判断
+# -----------------------------------------------------------------------------
+step_version_check() {
+  info "── 2/7 版本与冲突检查 ──"
+  local cur_raw cur_norm want_norm
+  cur_raw="$(detect_version)"
+
+  if [ -z "${cur_raw// /}" ]; then
+    ok "未检测到已安装的 ${PKG_NAME}，执行全新安装"
+    INSTALLED_VERSION=""
+    ACTION="install"
+    return 0
+  fi
+
+  cur_norm="$(normalize_version "${cur_raw}")"
+  want_norm="$(normalize_version "${PKG_VERSION}")"
+  INSTALLED_VERSION="${cur_norm:-${cur_raw}}"
+  info "已安装版本：${cur_raw}（解析为 ${INSTALLED_VERSION}）"
+  info "离线包版本：${PKG_VERSION}（解析为 ${want_norm:-未知}）"
+
+  # 目标版本本身是 "stable"/"latest" 这类非数字串时无法比较，按已安装处理
+  if [ -z "${want_norm}" ]; then
+    if [ "${FORCE}" -eq 1 ]; then
+      warn "包版本为非数字标识（${PKG_VERSION}），无法比较；已指定 --force，强制重装"
+      ACTION="reinstall"
+      return 0
+    fi
+    ok "已安装且目标版本不可比较，视为已满足（需要重装请加 --force）"
+    ACTION="skip"
+    return 0
+  fi
+
+  if [ "${cur_norm}" = "${want_norm}" ]; then
+    if [ "${FORCE}" -eq 1 ]; then
+      warn "版本相同（${cur_norm}），但指定了 --force，强制重装"
+      ACTION="reinstall"
+      return 0
+    fi
+    ok "版本一致（${cur_norm}），无需安装（需要重装请加 --force）"
+    ACTION="skip"
+    return 0
+  fi
+
+  # 版本不同 —— 这是需要人判断的地方
+  warn "版本不一致：已装 ${cur_norm}，离线包 ${want_norm}"
+  warn "覆盖升级会替换 ${PREFIX:-安装目录} 下的全部内容；若其中存在你自己安装的其它组件，请先备份"
+  if [ "${FORCE}" -eq 1 ] || [ "${UPGRADE}" -eq 1 ]; then
+    warn "已显式指定 --force / --upgrade，继续覆盖安装"
+    ACTION="upgrade"
+    return 0
+  fi
+  die "为避免误覆盖已中止。确认要覆盖请加 --upgrade（或 --force），仅预览请加 --dry-run"
+}
+
+# -----------------------------------------------------------------------------
+# 步骤 3 —— 随包系统依赖
+#   按本机包管理器挑：dpkg 系用 .deb，rpm 系用 .rpm。
+#   两种包不可能同时生效（包数据库不兼容），只处理匹配的那一种。
+# -----------------------------------------------------------------------------
+step_deps() {
+  info "── 3/7 系统依赖 ──"
+  if [ "${SKIP_DEPS}" -eq 1 ]; then
+    warn "已指定 --skip-deps，跳过随包依赖安装"
+    return 0
+  fi
+
+  if command -v dpkg >/dev/null 2>&1; then
+    step_deps_deb
+  elif command -v rpm >/dev/null 2>&1; then
+    step_deps_rpm
+  else
+    warn "本机既无 dpkg 也无 rpm，跳过随包依赖安装"
+  fi
+}
+
+# 定位打包时装载的依赖包目录：优先登记路径，其次按目录名兜底搜索
+locate_deps_dir() {
+  local ext="$1" cand
+  for cand in {% if _offline_deb_dir | default('') %} \
+              "${STAGE}/{{ _offline_deb_dir | regex_replace('^/', '') }}" {% endif %} \
+              "${STAGE}/tmp/ansible-pkg"; do
+    if [ -d "${cand}" ] && [ "$(find "${cand}" -maxdepth 3 -name "*.${ext}" -type f 2>/dev/null | wc -l)" -gt 0 ]; then
+      printf '%s' "${cand}"; return 0
+    fi
+  done
+  while IFS= read -r cand; do
+    if [ "$(find "${cand}" -maxdepth 2 -name "*.${ext}" -type f 2>/dev/null | wc -l)" -gt 0 ]; then
+      printf '%s' "${cand}"; return 0
+    fi
+  done < <(find "${STAGE}" -maxdepth 4 -type d -name '*-deb' 2>/dev/null)
+  return 1
+}
+
+step_deps_deb() {
+  local debdir n
+  if ! debdir="$(locate_deps_dir deb)"; then
+    ok "离线包未附带系统依赖 .deb，跳过"
+    return 0
+  fi
+  n="$(find "${debdir}" -name '*.deb' -type f 2>/dev/null | wc -l)"
+  info "发现 ${n} 个 .deb，位置 ${debdir#"${STAGE}"/}"
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    find "${debdir}" -name '*.deb' -type f -printf '    would install: %f\n' 2>/dev/null || true
+    return 0
+  fi
+  # 为什么不用 dpkg -i 逐个装：
+  #   dpkg -i 按文件名顺序解包，不解析依赖。元包（gcc / build-essential）会排在
+  #   真正的实现包（gcc-9 / libc6-dev）之前，依赖未满足 → 停在 iU（未配置）状态，
+  #   postinst 不执行 → update-alternatives 不跑 → /usr/bin/cc 压根不会出现。
+  #   症状：gcc --version 有输出，但 cc 不存在，cargo build 报 linker `cc` not found。
+  # 正确做法：让 apt 从本地目录解析依赖顺序。
+  #   先把目录作为 file:// 源临时挂上，apt 就能算依赖图。
+  local list="/etc/apt/sources.list.d/zz-offline-deps.list"
+  local tmpd
+  tmpd="$(mktemp -d)"
+  printf 'deb [trusted=yes] file://%s ./
+' "${debdir}" > "${list}"
+  apt-get update -o Dir::Etc::sourcelist="${list}" \
+                 -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" \
+                 >/dev/null 2>&1 || true
+
+  # 只装目录里实际存在的包，避免 apt 去远端拉新版本
+  local names
+  names="$(find "${debdir}" -name '*.deb' -type f -printf '%f\n' 2>/dev/null \
+            | sed 's/_.*$//' | sed 's/%3a.*$//' | sort -u | tr '\n' ' ')"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      -o Dir::Etc::sourcelist="${list}" \
+      -o Dir::Etc::sourceparts="-" \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold \
+      -o Dpkg::Options::=--force-depends \
+      --no-install-recommends ${names} 2>&1 | tail -10 || {
+    warn "apt 本地源安装未完全成功，回退 dpkg -i 逐个补装"
+    find "${debdir}" -name '*.deb' -type f -print0 \
+      | sort -z | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -5 || true
+  }
+  rm -f "${list}"
+  rm -rf "${tmpd}"
+  apt-get update >/dev/null 2>&1 || true
+  # 清理残留的未配置状态
+  dpkg --configure -a >/dev/null 2>&1 || true
+  ok "系统依赖处理完成"
+}
+
+step_deps_rpm() {
+  local rpmdir n pm
+  if ! rpmdir="$(locate_deps_dir rpm)"; then
+    ok "离线包未附带系统依赖 .rpm，跳过"
+    return 0
+  fi
+  n="$(find "${rpmdir}" -name '*.rpm' -type f 2>/dev/null | wc -l)"
+  info "发现 ${n} 个 .rpm，位置 ${rpmdir#"${STAGE}"/}"
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    find "${rpmdir}" -name '*.rpm' -type f -printf '    would install: %f\n' 2>/dev/null || true
+    return 0
+  fi
+  # 用 dnf localinstall 而不是逐个 rpm -Uvh：
+  #   rpm -Uvh 遇到依赖顺序问题会整批回滚；dnf 会自行解依赖顺序。
+  #   --skip-broken 用来避开与系统已装包冲突的项
+  #   （典型：依赖闭包带了 coreutils，而系统用的是 coreutils-single）。
+  if command -v dnf >/dev/null 2>&1; then
+    pm=dnf
+  elif command -v yum >/dev/null 2>&1; then
+    pm=yum
+  else
+    warn "本机无 dnf/yum，改用 rpm -Uvh --replacepkgs"
+    rpm -Uvh --replacepkgs "${rpmdir}"/*.rpm >/dev/null 2>&1 \
+      || warn "部分 rpm 未装上（可能已存在），继续"
+    ok "系统依赖处理完成"
+    return 0
+  fi
+  "${pm}" -y --setopt=install_weak_deps=False --skip-broken \
+      localinstall "${rpmdir}"/*.rpm 2>&1 | tail -8 || true
+  ok "系统依赖处理完成"
+}
+
+# -----------------------------------------------------------------------------
+# 步骤 4 —— 还原安装产物
+# -----------------------------------------------------------------------------
+step_restore() {
+  info "── 4/7 还原安装产物 ──"
+{% for p in _offline_install_paths | default([]) %}
+  # --- {{ p.dest }} ---
+  if [ ! -e "${STAGE}/{{ p.src | regex_replace('^/', '') }}" ]; then
+    die "离线包不完整：缺少 {{ p.src }}（期望路径 ${STAGE}/{{ p.src | regex_replace('^/', '') }}）"
+  fi
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    info "[dry-run] cp -a ${STAGE}/{{ p.src | regex_replace('^/', '') }}/. {{ p.dest }}/"
+  else
+    mkdir -p "{{ p.dest }}"
+    cp -a "${STAGE}/{{ p.src | regex_replace('^/', '') }}/." "{{ p.dest }}/"
+    ok "已还原 {{ p.dest }}"
+  fi
+{% endfor %}
+}
+
+# -----------------------------------------------------------------------------
+# 步骤 5 —— 生成运行环境文件（wrapper / profile）
+# -----------------------------------------------------------------------------
+step_files() {
+  info "── 5/7 生成运行环境文件 ──"
+{% for f in _offline_install_files | default([]) %}
+  # --- {{ f.path }} ---
+  if [ -e "{{ f.path }}" ] && [ "${FORCE}" -ne 1 ]; then
+    info "已存在，跳过（用 --force 覆盖）：{{ f.path }}"
+  elif [ "${DRY_RUN}" -eq 1 ]; then
+    info "[dry-run] 写入 {{ f.path }}"
+{% if f.from_package | default('') | length > 0 %}
+  else
+    SRC_FILE="${STAGE}/{{ f.from_package }}"
+    [ -f "${SRC_FILE}" ] || die "离线包不完整：缺少 ${SRC_FILE}"
+    mkdir -p "$(dirname "{{ f.path }}")"
+    cp "${SRC_FILE}" "{{ f.path }}"
+    chmod {{ f.mode | default('0755') }} "{{ f.path }}"
+    ok "已写入 {{ f.path }}"
+{% else %}
+  else
+    mkdir -p "$(dirname "{{ f.path }}")"
+    cat > "{{ f.path }}" <<'__PKG_FILE_EOF__'
+{{ f.content | default('') | trim }}
+__PKG_FILE_EOF__
+    chmod {{ f.mode | default('0755') }} "{{ f.path }}"
+    ok "已生成 {{ f.path }}"
+{% endif %}
+  fi
+{% endfor %}
+{% if _offline_install_files | default([]) | length == 0 %}
+  ok "本包无需生成额外文件"
+{% endif %}
+
+  # 属主校正
+  if [ -n "${PREFIX}" ] && [ -d "${PREFIX}" ] && [ "${DRY_RUN}" -eq 0 ]; then
+    if ! getent group "${TARGET_GROUP}" >/dev/null 2>&1; then
+      groupadd "${TARGET_GROUP}" 2>/dev/null || true
+    fi
+    if ! id "${TARGET_USER}" >/dev/null 2>&1; then
+      useradd -m -s /bin/bash -g "${TARGET_GROUP}" "${TARGET_USER}" 2>/dev/null || true
+    fi
+    chown -R "${TARGET_USER}:${TARGET_GROUP}" "${PREFIX}" 2>/dev/null || true
+    ok "属主已设为 ${TARGET_USER}:${TARGET_GROUP}"
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# 步骤 6 —— 校验
+# -----------------------------------------------------------------------------
+step_verify() {
+  info "── 6/7 校验 ──"
+
+{% if _offline_install_pre_hook | default('') | length > 0 %}
+{{ _offline_install_pre_hook | indent(2, true) }}
+{% endif %}
+
+  local cur
+  cur="$(detect_version)"
+  if [ -n "${cur// /}" ]; then
+    ok "校验通过：${cur}"
+    INSTALLED_VERSION="$(normalize_version "${cur}")"
+    [ -n "${INSTALLED_VERSION}" ] || INSTALLED_VERSION="${cur}"
+  else
+    warn "探测未返回版本，安装可能不完整"
+    if [ "${DRY_RUN}" -eq 0 ]; then
+      return 1
+    fi
+  fi
+
+{% if _offline_install_post_hook | default('') | length > 0 %}
+{{ _offline_install_post_hook | indent(2, true) }}
+{% endif %}
+}
+
+# -----------------------------------------------------------------------------
+# 步骤 7 —— 写状态标记
+# -----------------------------------------------------------------------------
+step_state() {
+  info "── 7/7 状态标记 ──"
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    info "[dry-run] 不写状态标记"
+    return 0
+  fi
+  mkdir -p "${STATE_DIR}"
+  cat > "${STATE_FILE}" <<__PKG_STATE_EOF__
+{
+  "pkg": "${PKG_NAME}",
+  "version": "${INSTALLED_VERSION:-${PKG_VERSION}}",
+  "version_expected": "${PKG_VERSION}",
+  "mode": "offline-script",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "package_file": "$(basename "${STAGE}")",
+  "host": "$(hostname)"
+}
+__PKG_STATE_EOF__
+  chmod 0644 "${STATE_FILE}" 2>/dev/null || true
+  ok "状态标记已写入 ${STATE_FILE}"
+}
+
+# -----------------------------------------------------------------------------
+# 卸载
+# -----------------------------------------------------------------------------
+do_uninstall() {
+  info "── 卸载 ${PKG_NAME} ${PKG_VERSION} ──"
+  require_root
+  local removed=0
+{% for p in _offline_install_paths | default([]) %}
+  if [ -e "{{ p.dest }}" ]; then
+    info "删除 {{ p.dest }}"
+    [ "${DRY_RUN}" -eq 1 ] || rm -rf "{{ p.dest }}"
+    removed=$((removed + 1))
+  fi
+{% endfor %}
+{% for f in _offline_install_files | default([]) %}
+  if [ -e "{{ f.path }}" ]; then
+    info "删除 {{ f.path }}"
+    [ "${DRY_RUN}" -eq 1 ] || rm -f "{{ f.path }}"
+    removed=$((removed + 1))
+  fi
+{% endfor %}
+  if [ -f "${STATE_FILE}" ]; then
+    info "删除状态标记 ${STATE_FILE}"
+    [ "${DRY_RUN}" -eq 1 ] || rm -f "${STATE_FILE}"
+    removed=$((removed + 1))
+  fi
+  ok "卸载完成，共处理 ${removed} 项"
+  [ "${JSON_OUT}" -eq 1 ] && emit_json "uninstalled" "卸载完成"
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# main
+# -----------------------------------------------------------------------------
+main() {
+  if [ "${JSON_OUT}" -eq 0 ]; then
+    printf '\n%s========== %s %s 离线安装 ==========%s\n' \
+      "$C_INFO" "$PKG_NAME" "$PKG_VERSION" "$C_RST"
+    printf '  解包目录 : %s\n' "${STAGE}"
+    printf '  目标用户 : %s:%s\n' "${TARGET_USER}" "${TARGET_GROUP}"
+    printf '  安装前缀 : %s\n' "${PREFIX:-（未设置）}"
+    printf '  运行模式 : %s\n\n' \
+      "$([ "${DRY_RUN}" -eq 1 ] && echo '试运行 dry-run（不修改系统）' || echo '实际执行')"
+  fi
+
+  if [ "${UNINSTALL}" -eq 1 ]; then
+    do_uninstall
+    return $?
+  fi
+
+  step_precheck
+  step_version_check
+
+  if [ "${ACTION}" = "skip" ]; then
+    [ "${JSON_OUT}" -eq 1 ] && emit_json "skipped" "版本一致（${INSTALLED_VERSION}），无需安装"
+    printf '\n%s[✓] %s %s 已安装且版本一致，本次跳过%s\n\n' "$C_OK" "$PKG_NAME" "$PKG_VERSION" "$C_RST"
+    return 0
+  fi
+
+  step_deps
+  step_restore
+  step_files
+
+  if ! step_verify; then
+    err "安装后校验失败，请手动检查 ${PREFIX:-安装目录}"
+    [ "${JSON_OUT}" -eq 1 ] && emit_json "failed" "安装后校验失败"
+    exit 2
+  fi
+
+  step_state
+
+  [ "${JSON_OUT}" -eq 1 ] && emit_json "installed" "安装成功（${ACTION}）"
+  if [ "${JSON_OUT}" -eq 0 ]; then
+    printf '\n%s[✓] %s %s 安装完成%s\n' "$C_OK" "$PKG_NAME" "${INSTALLED_VERSION:-$PKG_VERSION}" "$C_RST"
+    printf '    下一步：%s\n\n' "{{ _offline_next_hint | default('执行对应命令验证版本') }}"
+  fi
+}
+
+main "$@"

@@ -40,3 +40,9 @@ _install_pack_exclude:
 # 解压后 node 二进制所在的候选相对路径
 _nodejs_pack_prefix_candidates:
   - "{{ nvm_prefix }}/versions/node"
+
+# 包内没有 install-offline.sh 时回退使用的落盘任务
+_install_offline_apply_tasks: "{{ role_path }}/tasks/offline_apply.yml"
+
+# 离线包内系统依赖包目录（模板 offline-install.sh.j2 用此变量定位 .deb / .rpm）
+_offline_deb_dir: "{{ nodejs_runtime_deb_dir }}"

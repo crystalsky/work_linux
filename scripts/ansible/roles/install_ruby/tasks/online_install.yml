@@ -52,9 +52,10 @@
     - _ruby_effective_method == 'apt'
     - not (_ruby_installed_ok | bool) or (install_force | default(false) | bool)
   block:
-    # 不使用 ansible.builtin.apt：该模块需要目标机 Python 自带 python3-apt。
-    # Ubuntu 20.04 的系统 Python 3.8 无法运行 Ansible 2.20，而镜像里的
-    # Python 3.12 又没有 apt_pkg 绑定。统一走 apt_compat.yml（apt-get 命令行）。
+    # 不使用 ansible.builtin.apt / dnf 模块：前者需要目标机 Python 有
+    # python3-apt（Ubuntu 20.04 的 3.8 不能跑 Ansible 2.20，3.12 没有绑定）；
+    # 后者需要 python3-dnf（CentOS Stream 8 只有 python3.6 版本）。
+    # 统一走 install_base 的 apt_compat.yml / dnf_compat.yml。
     - name: "[{{ install_pkg_name }}] apt —— 安装 ruby 及编译依赖"
       ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
       vars:
@@ -62,6 +63,15 @@
         _apt_state: present
         _apt_update: true
         _apt_cache_time: "{{ install_base_apt_cache_valid_time | default(3600) }}"
+      when: install_base_facts.pkg_mgr == 'apt'
+
+    - name: "[{{ install_pkg_name }}] dnf —— 安装 ruby 及编译依赖"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/dnf_compat.yml"
+      vars:
+        _dnf_pkgs: "{{ ruby_apt_packages_dnf }}"
+        _dnf_state: present
+        _dnf_update: true
+      when: install_base_facts.pkg_mgr == 'dnf'"
 
 # ---------- source 方式 ----------
 - name: "[{{ install_pkg_name }}] 在线 —— 通过源码编译安装"
@@ -75,15 +85,42 @@
     # 编译依赖 + 运行时动态库一起装：
     # -dev 包给头文件，运行库包给 dlopen 时的 .so，
     # 缺后者会导致 require "yaml" 报 libyaml-0.so.2 not found。
-    - name: "[{{ install_pkg_name }}] source —— 安装编译依赖与运行时库"
+    - name: "[{{ install_pkg_name }}] source —— 按发行版挑选编译依赖"
+      ansible.builtin.set_fact:
+        _ruby_source_build_pkgs: >-
+          {{ ruby_build_packages if install_base_facts.pkg_mgr == 'apt'
+             else ruby_build_packages_dnf }}
+        _ruby_source_runtime_pkgs: >-
+          {{ ruby_runtime_packages if install_base_facts.pkg_mgr == 'apt'
+             else ruby_runtime_packages_dnf }}
+        _ruby_source_self_pkgs: >-
+          {{ ruby_apt_packages if install_base_facts.pkg_mgr == 'apt'
+             else ruby_apt_packages_dnf }}
+
+    - name: "[{{ install_pkg_name }}] source —— 安装编译依赖与运行时库（apt）"
       ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
       vars:
         _apt_pkgs: >-
-          {{ ruby_apt_packages + ruby_build_packages +
-             (ruby_runtime_packages | default([])) }}
+          {{ _ruby_source_self_pkgs + _ruby_source_build_pkgs +
+             (_ruby_source_runtime_pkgs | default([])) }}
         _apt_state: present
         _apt_update: true
         _apt_cache_time: "{{ install_base_apt_cache_valid_time | default(3600) }}"
+      when: install_base_facts.pkg_mgr == 'apt'
+
+    - name: "[{{ install_pkg_name }}] source —— 安装编译依赖与运行时库（dnf）"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/dnf_compat.yml"
+      vars:
+        _dnf_pkgs: >-
+          {{ _ruby_source_self_pkgs + _ruby_source_build_pkgs +
+             (_ruby_source_runtime_pkgs | default([])) }}
+        _dnf_state: present
+        _dnf_update: true
+        # libyaml-devel 在 CentOS Stream 8 属于 PowerTools 仓库，
+        # base 仓库里没有；缺失时 Psych 只是没有 YAML 支持，不影响 ruby 本体，
+        # 因此这里"尽力安装"，不因单个包找不到而整体失败。
+        _dnf_skip_unavailable: true
+      when: install_base_facts.pkg_mgr == 'dnf'
 
     - name: "[{{ install_pkg_name }}] source —— 下载源码包"
       ansible.builtin.get_url:

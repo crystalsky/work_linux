@@ -1,0 +1,86 @@
+---
+# =============================================================================
+# install_base —— dnf/yum 兼容层
+# =============================================================================
+# 与 apt_compat.yml 对应：不做 dnf 模块调用，直接用命令行，
+# 这样在 python3-dnf 缺失或版本不匹配时仍然可用。
+#
+# 调用约定：
+#   _dnf_pkgs   : 必需（list）包名
+#   _dnf_state  : 可选 present（默认）| absent
+#   _dnf_update : 可选 是否先 makecache（默认 false）
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] dnf —— 确认 dnf 可用"
+  ansible.builtin.command:
+    argv: [dnf, --version]
+  register: _dnf_chk
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] dnf —— 不可用时中止"
+  ansible.builtin.assert:
+    that:
+      - _dnf_chk.rc | default(1) == 0
+    fail_msg: "目标机没有可用的 dnf 命令"
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] dnf —— 刷新元数据缓存"
+  ansible.builtin.command:
+    argv: [dnf, makecache]
+  when: _dnf_update | default(false) | bool
+  changed_when: true
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] dnf —— 查询已安装的包"
+  ansible.builtin.shell: |
+    set -u
+    rpm -qa --qf '%{NAME}\n' 2>/dev/null | sort -u
+  args:
+    executable: /bin/bash
+  register: _dnf_installed
+  changed_when: false
+
+- name: "[{{ install_pkg_name }}] dnf —— 计算变更集合"
+  ansible.builtin.set_fact:
+    _dnf_todo: >-
+      {{ (_dnf_pkgs | map('string') | map('trim') | unique | sort)
+         | difference(_dnf_installed.stdout_lines | default([]))
+         if (_dnf_state | default('present')) == 'present'
+         else ((_dnf_pkgs | map('string') | unique | sort)
+               | intersect(_dnf_installed.stdout_lines | default([]))) }}
+
+- name: "[{{ install_pkg_name }}] dnf —— 变更计划"
+  ansible.builtin.debug:
+    msg: >-
+      {{ ('无需变更（均已 ' ~ (_dnf_state | default('present')) ~ '）')
+         if _dnf_todo | length == 0
+         else ('将 ' ~ (_dnf_state | default('present')) ~ '：' ~ (_dnf_todo | join(' '))) }}
+
+# 可选的额外参数：
+#   _dnf_skip_unavailable: true → 加 --skip-broken，跳过仓库里找不到的包，
+#   允许"尽力安装"（例如 CentOS Stream 8 的 libyaml-devel 只在 PowerTools 里，
+#   base 仓库找不到但不装也能编译，Psych 只是缺 YAML 支持）。
+- name: "[{{ install_pkg_name }}] dnf —— 安装"
+  ansible.builtin.command:
+    argv: >-
+      {{ ['dnf', '-y', 'install', '--setopt=install_weak_deps=False'] +
+         (['--skip-broken'] if _dnf_skip_unavailable | default(false) | bool else []) +
+         _dnf_todo }}
+  when:
+    - (_dnf_state | default('present')) == 'present'
+    - _dnf_todo | length > 0
+  register: _dnf_install
+  changed_when: _dnf_install.rc | default(1) == 0
+  failed_when: _dnf_install.rc | default(1) != 0
+
+- name: "[{{ install_pkg_name }}] dnf —— 卸载"
+  ansible.builtin.command:
+    argv: >-
+      {{ ['dnf', '-y', 'remove'] + _dnf_todo }}
+  when:
+    - (_dnf_state | default('present')) == 'absent'
+    - _dnf_todo | length > 0
+  register: _dnf_remove
+  changed_when: _dnf_remove.rc | default(1) == 0
+  failed_when: _dnf_remove.rc | default(1) != 0

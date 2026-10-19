@@ -24,14 +24,21 @@
     - name: "[{{ install_pkg_name }}] 在线 —— 等待包管理器空闲"
       ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
 
-    - name: "[{{ install_pkg_name }}] 在线 —— 安装基础依赖包"
-      ansible.builtin.apt:
-        name: "{{ brew_apt_prereqs }}"
-        state: present
-        update_cache: true
-        dpkg_options: 'force-confdef,force-confold'
-      become: true
-      register: _brew_prereq_install_result
+    - name: "[{{ install_pkg_name }}] 在线 —— 安装基础依赖包（apt）"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+      vars:
+        _apt_pkgs: "{{ brew_apt_prereqs }}"
+        _apt_state: present
+        _apt_update: true
+      when: install_base_facts.pkg_mgr == 'apt'
+
+    - name: "[{{ install_pkg_name }}] 在线 —— 安装基础依赖包（dnf）"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/dnf_compat.yml"
+      vars:
+        _dnf_pkgs: "{{ brew_prereq_packages_dnf }}"
+        _dnf_state: present
+        _dnf_update: true
+      when: install_base_facts.pkg_mgr == 'dnf'
   when: brew_prereq_install | bool
 
 # 重新收集包信息，后续版本断言才看得到刚装的包

@@ -1,0 +1,117 @@
+---
+# =============================================================================
+# install_base —— 调用离线包内自带的安装脚本
+# =============================================================================
+# 设计动机：
+#   同一个离线包有两个消费者 —— Ansible playbook，以及"解压后直接 ./install-offline.sh"
+#   的人。如果安装逻辑只写在 Ansible 的 offline_apply.yml 里，脚本那份就得重写一遍，
+#   两边必然漂移。
+#
+#   因此把「落盘」这件事收敛到包内的 install-offline.sh（打包时由
+#   templates/offline-install.sh.j2 渲染进去），Ansible 退化为编排者：
+#     环境校验 → sha256 → 版本冲突判定 → 调脚本 → 解析结果 → 写状态
+#
+# 脚本契约（与 templates/offline-install.sh.j2 一一对应）：
+#   包根目录由脚本自身位置推断（脚本就摊在包根），因此无需显式传 --package。
+#   参数  --json        单行 JSON 输出（Ansible 解析这个）
+#         --upgrade     已装版本与目标版本不同时允许覆盖升级（否则拒绝）
+#         --force/-f    无视已有安装强制重装
+#         --skip-deps   跳过随包 .deb/.rpm 依赖补装
+#         --state-dir   状态标记目录
+#         -u/-g         安装产物属主/属组
+#   输出  单行 JSON：{"pkg":"...","version":"目标版本","result":"installed|skipped|error",
+#                       "installed_version":"实际版本","message":"...","mode":"..."}
+#         该 JSON 独占一行、无前缀，可直接 from_json。
+#   退出码 0=成功/无需安装 1=环境不满足 2=安装过程失败（已尽力回滚）
+#
+# 失败时仍走 install_base 的 snapshot/rollback（在 run.yml 里包 block/rescue）。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 包内脚本 —— 定位安装脚本"
+  ansible.builtin.stat:
+    path: "{{ _install_pkg_extract_dir }}/install-offline.sh"
+  register: _install_embedded_script
+  become: true
+
+- name: "[{{ install_pkg_name }}] 包内脚本 —— 缺失则回退到 role 的 offline_apply"
+  ansible.builtin.debug:
+    msg: >-
+      ⚠️  离线包内没有 install-offline.sh（可能是旧包），
+      回退使用 role 自带的 offline_apply.yml 完成安装。
+  when: not _install_embedded_script.stat.exists
+
+- name: "[{{ install_pkg_name }}] 包内脚本 —— 执行包内自带的安装脚本"
+  when: _install_embedded_script.stat.exists
+  block:
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 赋予执行权限"
+      ansible.builtin.file:
+        path: "{{ _install_pkg_extract_dir }}/install-offline.sh"
+        mode: "0755"
+      become: true
+
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 语法自检"
+      ansible.builtin.command:
+        argv: [bash, -n, "{{ _install_pkg_extract_dir }}/install-offline.sh"]
+      register: _install_script_syntax
+      changed_when: false
+      failed_when: _install_script_syntax.rc != 0
+
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 组装调用参数"
+      ansible.builtin.set_fact:
+        _install_script_argv: >-
+          {{ ['bash', _install_pkg_extract_dir ~ '/install-offline.sh',
+              '--state-dir', install_base_state_dir, '--json']
+             + (['--upgrade'] if (install_force | default(false) | bool) else [])
+             + (['--force'] if (install_force | default(false) | bool) else [])
+             + (['--skip-deps']
+                if (install_base_skip_offline_deps | default(false) | bool) else []) }}
+
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 运行安装"
+      ansible.builtin.command:
+        argv: "{{ _install_script_argv }}"
+        chdir: "{{ _install_pkg_extract_dir }}"
+      become: true
+      register: _install_script_run
+      changed_when: >-
+        (_install_script_run.stdout | default('')) is search('"result":"installed"')
+      failed_when: false
+
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 解析脚本结果"
+      vars:
+        _json_line: >-
+          {{ (_install_script_run.stdout_lines | default([])
+              | select('match', '^[{]') | list | last | default('{}', true)) }}
+      ansible.builtin.set_fact:
+        _install_script_result: "{{ _json_line | from_json }}"
+
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 输出结果"
+      ansible.builtin.debug:
+        msg: >-
+          result={{ _install_script_result.result | default('unknown') }}
+          installed={{ _install_script_result.installed_version | default('unknown') }}
+          | {{ _install_script_result.message | default('') }}
+
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 失败则中止（交由 run.yml 回滚）"
+      ansible.builtin.fail:
+        msg: >-
+          离线安装脚本执行失败（rc={{ _install_script_run.rc | default('?') }}）。
+          {{ _install_script_run.stderr | default('') | trim }}
+          {{ _install_script_result.message | default('') }}
+      when:
+        - _install_script_run.rc | default(1) | int != 0
+          or _install_script_result.result | default('') == 'error'
+
+    - name: "[{{ install_pkg_name }}] 包内脚本 —— 记录实际版本"
+      ansible.builtin.set_fact:
+        install_pkg_version_actual: >-
+          {{ _install_script_result.installed_version
+             | default(_install_script_result.version | default(install_pkg_version)) }}
+      when:
+        - _install_script_result.installed_version | default('') | length > 0
+        - _install_script_result.installed_version | default('') != 'unknown'
+
+- name: "[{{ install_pkg_name }}] 包内脚本 —— 回退路径：role 自带 offline_apply"
+  ansible.builtin.include_tasks: "{{ _install_offline_apply_tasks }}"
+  when:
+    - not _install_embedded_script.stat.exists
+    - _install_offline_apply_tasks | default('') | length > 0

@@ -1,0 +1,21 @@
+#!/bin/sh
+# =============================================================================
+# {{ _wrapper_cmd }} —— 离线包自带的 {{ _wrapper_cmd }} 入口
+# =============================================================================
+# 为什么不是软链接：
+#   rustup 的 {{ rust_cargo_home }}/bin/{{ _wrapper_cmd }} 是 rustup 生成的代理程序，
+#   脱离 RUSTUP_HOME / CARGO_HOME 环境变量就无法定位工具链，直接调用会报
+#   "rustup could not choose a version of cargo to run"。
+#   因此这里固定写死环境变量后再 exec 真正的代理程序，
+#   保证 root/test 任意用户裸调用都能工作。
+# =============================================================================
+set -eu
+
+RUSTUP_HOME="{{ rust_rustup_home }}"
+CARGO_HOME="{{ rust_cargo_home }}"
+RUSTUP_DIST_SERVER="{{ rust_dist_server }}"
+RUSTUP_UPDATE_ROOT="{{ rust_dist_server }}/rustup"
+RUSTUP_TELEMETRY=0
+export RUSTUP_HOME CARGO_HOME RUSTUP_DIST_SERVER RUSTUP_UPDATE_ROOT RUSTUP_TELEMETRY
+
+exec "${CARGO_HOME}/bin/{{ _wrapper_cmd }}" "$@"

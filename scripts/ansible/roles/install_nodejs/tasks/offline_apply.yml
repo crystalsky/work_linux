@@ -71,10 +71,12 @@
 # -----------------------------------------------------------------------------
 # 系统运行库（若随包携带）
 # -----------------------------------------------------------------------------
-- name: "[{{ install_pkg_name }}] 离线 —— 探测随包运行库 deb"
+- name: "[{{ install_pkg_name }}] 离线 —— 探测随包运行库包"
   ansible.builtin.shell: |
     set -u
-    find "{{ _install_pkg_extract_dir }}" -maxdepth 6 -name '*.deb' 2>/dev/null | wc -l
+    D="{{ _install_pkg_extract_dir }}"
+    echo "deb=$(find "$D" -maxdepth 6 -name '*.deb' 2>/dev/null | wc -l)" \
+         "rpm=$(find "$D" -maxdepth 6 -name '*.rpm' 2>/dev/null | wc -l)"
   args:
     executable: /bin/bash
   register: _nodejs_offline_debcount
@@ -83,19 +85,29 @@
 - name: "[{{ install_pkg_name }}] 离线 —— 安装随包运行库"
   ansible.builtin.shell: |
     set -u
-    LH="$(find "{{ _install_pkg_extract_dir }}" -maxdepth 6 -name '*.deb' 2>/dev/null \
-          | head -1 | xargs -r dirname)"
-    cd "$LH"
-    find . -maxdepth 1 -name '*.deb' -print0 | sort -z \
-      | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
-    dpkg --configure -a >/dev/null 2>&1 || true
-    echo "dpkg_done"
+    D="{{ _install_pkg_extract_dir }}"
+    ND=$(find "$D" -maxdepth 6 -name '*.deb' 2>/dev/null | wc -l)
+    NR=$(find "$D" -maxdepth 6 -name '*.rpm' 2>/dev/null | wc -l)
+    if [ "$ND" -gt 0 ]; then
+      LH="$(find "$D" -maxdepth 6 -name '*.deb' 2>/dev/null | head -1 | xargs -r dirname)"
+      cd "$LH"
+      find . -maxdepth 1 -name '*.deb' -print0 | sort -z \
+        | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
+      dpkg --configure -a >/dev/null 2>&1 || true
+    elif [ "$NR" -gt 0 ]; then
+      PKGS=$(find "$D" -maxdepth 6 -name '*.rpm' 2>/dev/null | sort | tr '\n' ' ')
+      dnf -y install --disablerepo='*' --setopt=install_weak_deps=False \
+        --skip-broken ${PKGS} 2>&1 | tail -10
+    fi
+    echo "pkg_done"
   args:
     executable: /bin/bash
   register: _nodejs_offline_deb_install
-  changed_when: "'dpkg_done' in _nodejs_offline_deb_install.stdout"
+  changed_when: "'pkg_done' in _nodejs_offline_deb_install.stdout"
   failed_when: false
-  when: _nodejs_offline_debcount.stdout | trim | default('0') | int > 0
+  when: >-
+    _nodejs_offline_debcount.stdout is search('deb=[1-9]')
+    or _nodejs_offline_debcount.stdout is search('rpm=[1-9]')
 
 # -----------------------------------------------------------------------------
 # 部署 node 版本目录

@@ -10,9 +10,8 @@
 
 - name: 分发 —— 计算产物文件名
   ansible.builtin.set_fact:
-    _install_pkg_basename: "{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
     _install_artifact_file: >-
-      {{ install_base_artifact_dir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz
+      {{ install_base_artifact_dir }}/{{ _install_pkg_basename }}
   tags: [install_base]
 
 - name: 分发 —— 拉回控制端 artifacts 目录
@@ -34,7 +33,7 @@
   ansible.builtin.debug:
     msg:
       - "[{{ install_pkg_name }}] 离线包已拉回控制端"
-      - "  {{ install_base_artifact_dir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
+      - "  {{ install_base_artifact_dir }}/{{ _install_pkg_basename }}"
       - "  offline_distribute_enabled={{ offline_distribute_enabled }}"
   tags: [install_base]
 

@@ -52,6 +52,9 @@
   - [离线 Docker 镜像批量导入内网 Harbor（mailcow 离线包实测）](devops_docker/20261012-harbor-batch-push-offline-images.md)（含 `scripts/harbor/push-images-to-harbor.sh`）
   - [Debian 13 沙箱开发容器镜像构建（Python 3.13 + uv + SSH）及 Ansible 接管验证](devops_docker/20261018-debian13-sandbox-image-python-uv-ssh.md)（含 `docker/debian13-sandbox/`、`scripts/ansible/`、批量测试脚本 `test-playbooks.sh`）
   - [Ubuntu 20.04 LTS 沙箱镜像构建（Python 3.12 + uv + SSH）](devops_docker/20261019-ubuntu2004-sandbox-image-python312-uv.md)（`docker/ubuntu20.04-sandbox/`，含 sshd `SetEnv` 注入 PATH、glibc 2.31 旧发行版验证场景）
+  - [Debian 11 (bullseye) 沙箱镜像构建：与 ubuntu20.04-sandbox 环境包对齐（glibc 2.31）](devops_docker/20261019-debian11-sandbox-image-glibc231.md)（`docker/debian11-sandbox/`，SSH 22228；bullseye 已 EOL，走 aliyun `debian-archive` 归档源 + `Check-Valid-Until false`）
+  - [Fedora 32 沙箱镜像构建：补齐 glibc 2.31 的 RPM 系空白](devops_docker/20261019-fedora32-sandbox-image-glibc231.md)（`docker/fedora32-sandbox/`，SSH 22227；禁用 metalink 改指 `archives.fedoraproject.org`；含 Ubuntu↔Fedora 包名映射表与 OpenSSH 8.3 兼容坑）
+  - [跨发行版沙箱一致性校验脚本](devops_docker/20261019-fedora32-sandbox-image-glibc231.md#-关联文档)（`scripts/devops/sandbox-parity-check.sh`：对比 glibc / 依赖命令集 / uv / venv，`-e 2.31` 可指定期望 glibc）
 - **devops_shell**
   - [Bash-it 安装配置与使用手册](devops_shell/20260610-bashit-install-config-guide.md)
   - [ldd_install.sh 动态库依赖收集脚本与 CMake 集成指南](devops_shell/20260828-ldd-install-script-cmake-integration.md)

@@ -77,6 +77,11 @@ nodejs_offline_include_runtime_debs: true
 nodejs_runtime_deb_dir: "{{ install_base_staging_dir }}/nodejs-runtime-deb"
 nodejs_runtime_packages:
   - libstdc++6
+# dnf 系的等价包名（CentOS/RHEL 是 libstdc++）
+nodejs_runtime_packages_dnf:
+  - libstdc++
+  - glibc
+  - zlib
 
 # ---------- install_base 钩子 ----------
 _install_online_tasks: "{{ role_path }}/tasks/online_install.yml"

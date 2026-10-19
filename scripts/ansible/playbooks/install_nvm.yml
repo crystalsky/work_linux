@@ -8,7 +8,7 @@
 #   uv run ansible-playbook playbooks/install_nvm.yml -e make_offline_package=true
 #
 - name: 安装 nvm
-  hosts: ubuntu2004_sandbox
+  hosts: sandbox
   gather_facts: true
   vars:
     install_mode: online

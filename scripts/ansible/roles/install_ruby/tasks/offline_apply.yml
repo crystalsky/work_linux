@@ -160,35 +160,39 @@
         creates: "{{ ruby_prefix }}/bin/ruby"
       become: true
 
-    # 离线包若附带运行库 .deb（source 编译的扩展模块依赖它们），
+    # 离线包若附带运行库包（source 编译的扩展模块依赖它们），
     # 在这里补装。缺库的典型症状：require "yaml" 报 libyaml-0.so.2 找不到。
-    - name: "[{{ install_pkg_name }}] tree —— 安装随包附带的运行库 .deb"
+    # apt 系是 .deb，dnf 系是 .rpm，两者互斥（包按发行版分别制作）。
+    - name: "[{{ install_pkg_name }}] tree —— 安装随包附带的运行库包"
       ansible.builtin.shell: |
         set -u
         D="{{ _install_pkg_extract_dir }}"
-        N="$(find "$D" -maxdepth 4 -name '*.deb' -type f 2>/dev/null | wc -l)"
-        echo "deb_count=$N"
-        if [ "$N" -eq 0 ]; then
-          exit 0
+        ND=$(find "$D" -maxdepth 4 -name '*.deb' -type f 2>/dev/null | wc -l)
+        NR=$(find "$D" -maxdepth 4 -name '*.rpm' -type f 2>/dev/null | wc -l)
+        echo "deb_count=$ND rpm_count=$NR"
+        if [ "$ND" -gt 0 ]; then
+          find "$D" -maxdepth 4 -name '*.deb' -type f -print0 2>/dev/null \
+            | sort -z | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
+          dpkg --configure -a 2>&1 | tail -3 || true
+        elif [ "$NR" -gt 0 ]; then
+          # --skip-broken：跳过与目标机已有包冲突的单个包，不整批失败
+          PKGS=$(find "$D" -maxdepth 4 -name '*.rpm' -type f 2>/dev/null | sort | tr '\n' ' ')
+          dnf -y install --disablerepo='*' --setopt=install_weak_deps=False \
+            --skip-broken ${PKGS} 2>&1 | tail -12
         fi
-        find "$D" -maxdepth 4 -name '*.deb' -type f -print0 2>/dev/null \
-          | sort -z | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
-        dpkg --configure -a 2>&1 | tail -3 || true
       args:
         executable: /bin/bash
       register: _ruby_offline_runtime_debs
-      changed_when: "'deb_count=0' not in _ruby_offline_runtime_debs.stdout"
+      changed_when: "'deb_count=0 rpm_count=0' not in _ruby_offline_runtime_debs.stdout"
       failed_when: false
 
     - name: "[{{ install_pkg_name }}] tree —— 输出运行库补装结果"
       ansible.builtin.debug:
         msg: >-
-          {{ '离线包未附带运行库 .deb，跳过补装'
-             if 'deb_count=0' in _ruby_offline_runtime_debs.stdout | default('')
-             else '已补装 '
-                  ~ (_ruby_offline_runtime_debs.stdout | default('')
-                     | regex_findall('deb_count=([0-9]+)') | first | default('0', true))
-                  ~ ' 个运行库包' }}
+          {{ '离线包未附带运行库包，跳过补装'
+             if 'deb_count=0 rpm_count=0' in _ruby_offline_runtime_debs.stdout | default('')
+             else '已补装运行库：'
+                  ~ (_ruby_offline_runtime_debs.stdout | default('') | first) }}
 
     - name: "[{{ install_pkg_name }}] tree —— 暴露命令到 PATH"
       ansible.builtin.file:
@@ -275,6 +279,6 @@
     msg:
       - "⚠️  Ruby 扩展模块存在缺失的动态库，相关功能会加载失败："
       - "{{ _ruby_offline_libs.stdout | default('') }}"
-      - "    补救：在目标机准备对应运行库包（如 libyaml-0-2、libssl3）。"
+      - "    补救：apt 系装 libyaml-0-2 等，dnf 系装 libyaml，或改用带运行库的离线包。"
       - "    排查：find {{ ruby_prefix }}/lib -name '*.so' -exec ldd {} \\; | grep 'not found'"
   when: "'status=missing' in _ruby_offline_libs.stdout | default('')"

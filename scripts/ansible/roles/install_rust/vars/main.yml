@@ -20,7 +20,7 @@ _install_rollback_paths:
 # 打离线包时要收集的路径
 _install_pack_sources: >-
   {{ [rust_prefix] +
-     ([rust_build_deb_dir] if rust_offline_include_build_debs | bool else []) }}
+     ([rust_build_deb_dir] if rust_offline_include_build_deps | bool else []) }}
 
 # rustup 目录下的 downloads / tmp 是无用的下载缓存，
 # registry 是用户项目的依赖缓存（不属于工具链本体），全部排除
@@ -50,3 +50,52 @@ _rustup_init_url: >-
 # 不能用 cargo/bin/cargo 判断：那是 rustup 一开始就建的代理软链，永远存在。
 _rust_toolchain_marker: >-
   {{ rust_rustup_home }}/toolchains/{{ rust_toolchain }}
+
+# -----------------------------------------------------------------------------
+# 自包含离线安装脚本（install_base/templates/offline-install.sh.j2）所需的声明
+# -----------------------------------------------------------------------------
+_offline_target_user: "{{ rust_user }}"
+_offline_target_group: "{{ rust_group }}"
+_offline_prefix: "{{ rust_prefix }}"
+
+# 脚本内的探测命令：必须带环境变量，否则 rustup 代理找不到工具链
+_offline_probe_cmd: >-
+  {{ _install_probe_cmd }}
+
+# 包内布局：opt/rust/{cargo,rustup}
+_offline_deb_dir: "{{ rust_build_deb_dir }}"
+# role 自带的包内附件目录（wrapper/profile 由 pack_prepare.yml 渲染到此）
+
+# 安装产物映射：包内路径 → 目标路径
+_offline_install_paths:
+  - src: "opt/rust/cargo"
+    dest: "{{ rust_cargo_home }}"
+  - src: "opt/rust/rustup"
+    dest: "{{ rust_rustup_home }}"
+
+# 安装后需要落地的文件：包内 .installer/<from_package> → 目标路径
+# 为什么用 from_package 而不是内联 content：
+#   wrapper 与 profile 都是 Jinja 渲染产物，这里内联会导致三层转义，
+#   改为由 pack_prepare.yml 预先渲染成文件随包分发，脚本只做拷贝。
+_offline_install_files:
+  - path: "{{ rust_bin_link_dir }}/cargo"
+    mode: "0755"
+    from_package: "wrappers/cargo"
+  - path: "{{ rust_bin_link_dir }}/rustc"
+    mode: "0755"
+    from_package: "wrappers/rustc"
+  - path: "{{ rust_bin_link_dir }}/rustup"
+    mode: "0755"
+    from_package: "wrappers/rustup"
+  - path: "{{ rust_profile_file }}"
+    mode: "0644"
+    from_package: "profile.d/rust.sh"
+
+# role 自带的包内附件目录（wrapper/profile 由 pack_prepare.yml 渲染到此）
+_offline_extra_pack_dirs: "{{ install_base_staging_dir }}/rust-pack-installer"
+
+_offline_next_hint: >-
+  source {{ rust_profile_file }} 或直接用 {{ rust_bin_link_dir }}/cargo --version
+
+# 包内没有 install-offline.sh 时回退使用的落盘任务
+_install_offline_apply_tasks: "{{ role_path }}/tasks/offline_apply.yml"

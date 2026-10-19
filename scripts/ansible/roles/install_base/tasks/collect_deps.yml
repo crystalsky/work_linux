@@ -1,0 +1,279 @@
+---
+# =============================================================================
+# install_base —— 收集依赖包的发行版安装文件（通用能力）
+# =============================================================================
+# 目的：离线包不携带任何系统 .so，只携带发行版官方包文件（.deb / .rpm），
+#       由目标机自己的包管理器安装，避免 glibc/ABI 冲突。
+#
+# 调用约定：
+#   _dep_pkg_names   : 必需（list）依赖包名，如 [libstdc++6, libc6]
+#   _dep_download_dir: 可选 下载落地目录，默认 {{ install_base_staging_dir }}/deps-{{ install_pkg_name }}
+#
+# 产出：
+#   _dep_result      : { pkg_mgr, count, dir, names }
+#
+# 支持的包管理器（取自 install_base_facts.pkg_mgr）：
+#   apt  → debian / ubuntu 系：apt-cache depends --recurse + apt-get download
+#   dnf  → centos / rocky / alma 系：dnf repoquery --resolve --requires + dnf download --resolve
+#   yum  → 老 centos：同上，命令换成 yumdownloader
+#
+# 为什么用 apt-cache depends --recurse 而不是 apt-get install --print-uris：
+#   包已经装好时，--print-uris 不展开依赖闭包，只会输出 "already the newest version"，
+#   结果只下载到元包本体（build-essential 只有 4.6KB）。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 初始化参数"
+  ansible.builtin.set_fact:
+    _dep_pkg_names_norm: >-
+      {{ _dep_pkg_names | default([]) | map('string') | map('trim')
+         | reject('equalto', '') | unique | sort }}
+    # 默认排除项：
+    #   *.i686           —— 只保留目标架构，避免多架构重复
+    #   glibc-langpack-* —— glibc 会依赖上百个语言包（每种语言一个 rpm），
+    #                       构建工具链只需要 C 本地化，全部下载会让包体膨胀数百 MB
+    #   glibc-all-langpacks —— 同上，是全部语言包的聚合包
+    # 还要排除会与目标机现有包冲突的"发行版标识"类包：
+    #   带这些包会在 rpm -Uvh / dnf localinstall 时报
+    #   "centos-repos conflicts with centos-stream-repos"、
+    #   "coreutils-single conflicts with coreutils" 之类错误并整批回滚。
+    #   目标机本来就有等价物，完全不需要装。
+    _dep_exclude_pkgs: >-
+      {{ _dep_exclude | default(['*.i686', 'glibc-langpack-*',
+                                 'glibc-all-langpacks',
+                                 'centos-*', 'coreutils', 'coreutils-single',
+                                 'filesystem', 'setup', 'basesystem',
+                                 'systemd', 'systemd-libs', 'systemd-pam',
+                                 'kernel', 'kernel-core', 'kernel-modules',
+                                 'dracut', 'grub2-*', 'shim-*',
+                                 'selinux-policy*', 'python3-*', 'rpm-*']) }}
+    _dep_download_dir: >-
+      {{ _dep_download_dir | default(install_base_staging_dir ~ '/deps-' ~ install_pkg_name) }}
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 校验包名非空"
+  ansible.builtin.assert:
+    that:
+      - _dep_pkg_names_norm | length > 0
+    fail_msg: "未提供依赖包名（_dep_pkg_names），无法收集依赖"
+    quiet: true
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 重建下载目录"
+  ansible.builtin.file:
+    path: "{{ _dep_download_dir }}"
+    state: "{{ item }}"
+    mode: "0755"
+  loop:
+    - absent
+    - directory
+  become: true
+  tags: [install_base]
+
+# -----------------------------------------------------------------------------
+# debian / ubuntu 系
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 展开 deb 依赖闭包并下载"
+  when: install_base_facts.pkg_mgr == 'apt'
+  block:
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 等待 apt 锁"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+    # 解析依赖闭包的方式选择（踩过两次坑，结论如下）：
+    #
+    #   ✗ apt-cache depends --recurse
+    #       只沿「已安装」的依赖往下走，且对版本锁定的虚拟包无能为力。
+    #       实测：build-essential → gcc → cpp (= 4:9.3.0-1ubuntu2)，
+    #       构建机上 cpp 未安装（只装了 cpp-9），于是 cpp 整个丢失，
+    #       离线包装完后 gcc 停在 iU 状态、/usr/bin/cc 不存在、
+    #       cargo build 报 linker `cc` not found。
+    #
+    #   ✗ apt-get install --print-uris（不带 --reinstall）
+    #       包已安装时只输出 "already the newest version"，0 个 URI。
+    #
+    #   结论：没有单一命令能给出完整闭包，必须**两路合并**。
+    #
+    #   路 A：apt-cache depends --recurse
+    #       能铺开全部依赖关系（实测 69 个包），但会漏掉「版本锁定且未安装」
+    #       的虚拟包（cpp 就是这样丢的）。
+    #   路 B：apt-get install --print-uris
+    #       能解析出版本锁定的真实包，但包已装时只输出自身。
+    #
+    #   A ∪ B 才是完整闭包。单独用任何一个都不够。
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 展开 deb 依赖闭包（路 A：递归依赖树）"
+      ansible.builtin.shell: |
+        set -u
+        apt-cache depends --recurse --no-recommends --no-suggests \
+          --no-conflicts --no-breaks --no-replaces --no-enhances \
+          {{ _dep_pkg_names_norm | join(' ') }} 2>/dev/null \
+        | grep -oE '^[a-z0-9][a-z0-9.+-]*(:[a-z0-9]+)?$' \
+        | sed 's/:.*//' | sort -u
+      args:
+        executable: /bin/bash
+      register: _dep_deb_tree
+      changed_when: false
+
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 展开 deb 依赖闭包（路 B：apt 依赖求解）"
+      ansible.builtin.shell: |
+        set -u
+        apt-get install --print-uris --reinstall -y \
+          --no-install-recommends --allow-downgrades \
+          {{ _dep_pkg_names_norm | join(' ') }} 2>/dev/null \
+        | grep -oE "^'[^']+'" \
+        | tr -d "'" \
+        | sed 's#.*/##' \
+        | sed 's/_.*$//' \
+        | sed 's/%3a.*$//' \
+        | sort -u
+      args:
+        executable: /bin/bash
+      register: _dep_deb_uris
+      changed_when: false
+
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 合并两路结果"
+      ansible.builtin.set_fact:
+        _dep_deb_names: >-
+          {{ ((_dep_deb_tree.stdout | default('') | split)
+              + (_dep_deb_uris.stdout | default('') | split)
+              + (_dep_pkg_names_norm | default([])))
+             | unique | sort }}
+
+    # print-uris 偶尔漏掉多架构后缀，用 apt-cache show 再过滤一遍
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 过滤不可解析条目"
+      ansible.builtin.shell: |
+        set -u
+        OUT=""
+        for p in {{ _dep_deb_names | join(' ') }}; do
+          if apt-cache show "$p" >/dev/null 2>&1; then
+            OUT="$OUT $p"
+          fi
+        done
+        echo "$OUT" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' '
+      args:
+        executable: /bin/bash
+      register: _dep_deb_filtered
+      changed_when: false
+
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 输出 deb 清单"
+      ansible.builtin.debug:
+        msg: >-
+          依赖闭包 {{ _dep_deb_filtered.stdout | default('') | split | length }} 个包：
+          {{ _dep_deb_filtered.stdout | default('') | trim }}
+
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 逐个下载 deb"
+      ansible.builtin.shell: |
+        set -u
+        cd {{ _dep_download_dir }}
+        N=0
+        for p in {{ _dep_deb_filtered.stdout | default('') | split | join(' ') }}; do
+          if ls "${p}"_*.deb >/dev/null 2>&1; then continue; fi
+          if apt-get download "$p" >/dev/null 2>&1; then
+            N=$((N + 1))
+          else
+            echo "warn: $p 下载失败" >&2
+          fi
+        done
+        echo "downloaded=$N"
+        ls -1 *.deb 2>/dev/null | wc -l
+      args:
+        executable: /bin/bash
+      register: _dep_deb_download
+      changed_when: _dep_deb_download.stdout_lines[0] | default('downloaded=0') != 'downloaded=0'
+
+# -----------------------------------------------------------------------------
+# centos / rocky / alma 系
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 展开 rpm 依赖闭包并下载"
+  when: install_base_facts.pkg_mgr == 'dnf'
+  block:
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 确认 dnf 插件可用"
+      ansible.builtin.command:
+        argv: [dnf, --version]
+      register: _dep_dnf_ver
+      changed_when: false
+      failed_when: false
+
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 确保 dnf-plugins-core 在位"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/dnf_compat.yml"
+      vars:
+        _dnf_pkgs: [dnf-plugins-core]
+
+    # 用 --recursive 展开**完整**依赖闭包。
+    # 坑：`dnf download --resolve` 在依赖包已经安装时不展开闭包
+    #     （和 apt-get install --print-uris 的"already the newest version"是同一类问题），
+    #     实测只下载到 5 个 rpm 而不是 254 个。
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 递归解析依赖闭包"
+      ansible.builtin.shell: |
+        set -u
+        {
+          echo "{{ _dep_pkg_names_norm | join(' ') }}" | tr ' ' '\n'
+          dnf repoquery --requires --resolve --recursive \
+            {{ _dep_exclude_pkgs | map('regex_replace', '^', '--exclude=') | join(' ') }} \
+            {{ _dep_pkg_names_norm | join(' ') }} 2>/dev/null \
+          | sed 's/-[0-9].*$//'
+        } \
+        | grep -vE '^(/|config\(|rpmlib\()' \
+        | grep -v '^$' \
+        | sort -u \
+        | tr '\n' ' '
+      args:
+        executable: /bin/bash
+      register: _dep_rpm_resolve
+      changed_when: false
+
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 输出 rpm 清单"
+      ansible.builtin.debug:
+        msg: >-
+          依赖闭包 {{ _dep_rpm_resolve.stdout | default('') | split | length }} 个包：
+          {{ _dep_rpm_resolve.stdout | default('') | trim }}
+
+    - name: "[{{ install_pkg_name }}] 依赖收集 —— 下载闭包内全部 rpm"
+      ansible.builtin.shell: |
+        set -u
+        cd {{ _dep_download_dir }}
+        PKGS="{{ _dep_rpm_resolve.stdout | default('') | trim }}"
+        if [ -z "$PKGS" ]; then echo "downloaded=0"; exit 0; fi
+        dnf download --destdir {{ _dep_download_dir }} \
+          {{ _dep_exclude_pkgs | map('regex_replace', '^', '--exclude=') | join(' ') }} \
+          --setopt=install_weak_deps=False $PKGS >/dev/null 2>&1 || true
+        N=$(ls -1 *.rpm 2>/dev/null | wc -l)
+        echo "downloaded=$N"
+      args:
+        executable: /bin/bash
+      register: _dep_rpm_download
+      changed_when: _dep_rpm_download.stdout | default('downloaded=0') != 'downloaded=0'
+      failed_when: false
+
+# -----------------------------------------------------------------------------
+# 汇总
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 统计结果"
+  ansible.builtin.shell: |
+    set -u
+    DEB=$(ls -1 {{ _dep_download_dir }}/*.deb 2>/dev/null | wc -l)
+    RPM=$(ls -1 {{ _dep_download_dir }}/*.rpm 2>/dev/null | wc -l)
+    SIZE=$(du -sm {{ _dep_download_dir }} 2>/dev/null | awk '{print $1}')
+    echo "deb=$DEB rpm=$RPM size=${SIZE:-0}MB"
+  args:
+    executable: /bin/bash
+  register: _dep_summary
+  changed_when: false
+
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 结果为空则中止"
+  ansible.builtin.assert:
+    that:
+      - _dep_summary.stdout is search('deb=[1-9]') or _dep_summary.stdout is search('rpm=[1-9]')
+    fail_msg: >-
+      未能收集到任何依赖包（{{ _dep_summary.stdout }}）。
+      包管理器：{{ install_base_facts.pkg_mgr }}
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 记录结果"
+  ansible.builtin.set_fact:
+    _dep_result:
+      pkg_mgr: "{{ install_base_facts.pkg_mgr }}"
+      dir: "{{ _dep_download_dir }}"
+      summary: "{{ _dep_summary.stdout }}"
+
+- name: "[{{ install_pkg_name }}] 依赖收集 —— 完成"
+  ansible.builtin.debug:
+    msg: "依赖包已收集：{{ _dep_summary.stdout }}（{{ _dep_download_dir }}）"

@@ -31,6 +31,21 @@ install_repair_partial: false   # 安装不完整（缺配置）时是否补齐
 # ---------- 状态标记 ----------
 # 每个包安装成功后写入 <dir>/<pkg>.json，用于快速探测与排障
 install_base_state_dir: /var/lib/ansible-install-state
+
+# -----------------------------------------------------------------------------
+# 自包含离线安装脚本
+#   打包时把 templates/offline-install.sh.j2 渲染进离线包根目录，
+#   解包后可直接 sudo ./install-offline.sh 安装，无需 Ansible。
+#   两种部署方式共用同一份包校验值，状态标记也写同一个路径，
+#   因此先脚本装再 Ansible 跑，会被正确识别为 skip。
+# -----------------------------------------------------------------------------
+install_base_embed_installer: true
+offline_installer_name: install-offline.sh
+
+# 离线安装优先使用包内自带的 install-offline.sh（与人工解压后的用法一致）。
+# 置为 false 可回退到 role 的 offline_apply.yml（旧行为）。
+install_base_use_embedded_installer: true
+
 install_base_write_state: true
 
 # ---------- 目录约定 ----------
@@ -76,15 +91,28 @@ install_base_apt_lock_timeout: 120
 # ---------- 任务片段目录 ----------
 # 供各 install_<pkg> role include_tasks 使用
 install_base_tasks_dir: "{{ role_path }}/../install_base/tasks"
+# install_base 自身的目录。
+# 不能用 role_path：role 通过 vars/ 覆盖后，role_path 会指向调用方 role，
+# 导致 install_base 自己的 templates/ 找不到。
+install_base_role_dir: "{{ role_path }}/../install_base"
+# ---------- 脚本里要还原的路径 ----------
+# 每项是一个 dict：
+#   src  : 包内相对路径（相对解包根，不带开头的 /）
+#   dest : 目标机绝对路径
+#   mode : copy（默认，cp -a 目录内容到 dest）| move（mv 整个 src 到 dest）
+_offline_install_paths: []
 
-# ---------- 内部运行时变量（请勿手工设置） ----------
-_install_pkg_workdir: "{{ install_base_staging_dir }}/{{ install_pkg_name }}"
-_install_pkg_extract_dir: "{{ _install_pkg_workdir }}/extract"
-_install_pkg_local_file: "{{ install_base_cache_dir }}/{{ install_pkg_name }}-{{ install_pkg_version }}.tar.gz"
-_install_pkg_state_file: "{{ install_base_state_dir }}/{{ install_pkg_name }}.json"
+# ---------- 脚本要生成的 wrapper 文件 ----------
+# 每项是一个 dict：
+#   path    : 目标绝对路径
+#   content : 文件内容（打包时已渲染好的字符串）
+#   mode    : 默认 0755
+_offline_install_files: []
 
-# 由各软件 role 在自己的 defaults 里覆盖（指向 role_path 下的任务文件）
-# 例：_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
-_install_online_tasks: ""
-# 打包前的产物准备（ apt 类 role 用于收集 .deb 等）；留空则跳过
-_install_prepack_tasks: ""
+# 脚本尾部附加的自定义 shell 片段（可选，适合 role 做特性化校验）
+_offline_install_pre_hook: ""
+_offline_install_post_hook: ""
+
+# 离线安装时是否跳过随包依赖包（.deb/.rpm）的补装
+# 适用于目标机已自带这些库、或管理员希望自行管控依赖的场景
+install_base_skip_offline_deps: false

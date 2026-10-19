@@ -10,7 +10,7 @@
 #     -e offline_package_path=/workspace/nodejs22-22.tar.gz
 #
 - name: 安装 Node.js 22
-  hosts: ubuntu2004_sandbox
+  hosts: sandbox
   gather_facts: true
   vars:
     install_mode: online

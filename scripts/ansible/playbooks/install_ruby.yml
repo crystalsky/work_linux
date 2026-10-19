@@ -16,7 +16,8 @@
   vars:
     install_mode: online
     install_pkg_version: "3.4"
-    ruby_install_method: apt
+    # auto：仓库版本达标就用 apt/dnf 装，否则源码编译（跨发行版统一行为）
+    ruby_install_method: auto
     ruby_enforce_version: false
 
   roles:

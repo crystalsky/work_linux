@@ -23,10 +23,14 @@ _install_rollback_paths: >-
 # 打离线包时要打包的路径
 # deb  形态：apt 下载出的 .deb 目录
 # tree 形态：ruby_prefix 目录树
+# 离线包内容：
+#   deb 形态（apt/dnf 装发行版 ruby）→ 只带 .deb/.rpm 集合
+#   tree 形态（源码编译）→ ruby_prefix 目录树 + 运行库包 + 编译依赖包
 _install_pack_sources: >-
   {{ [ruby_deb_download_dir] if ruby_offline_format == 'deb'
-     else ([ruby_prefix] +
-           ([ruby_runtime_deb_dir] if ruby_offline_include_runtime_debs | bool else [])) }}
+     else ([ruby_prefix]
+           + ([ruby_runtime_deb_dir] if ruby_offline_include_runtime_debs | bool else [])
+           + ([ruby_build_deb_dir] if ruby_offline_include_build_debs | bool else [])) }}
 
 _install_pack_exclude:
   - "*/.git/*"
@@ -34,3 +38,10 @@ _install_pack_exclude:
   - "*/ext/*/*.o"
   - "*/share/ri/*"
   - "*/share/doc/*"
+
+# 包内没有 install-offline.sh 时回退使用的落盘任务
+_install_offline_apply_tasks: "{{ role_path }}/tasks/offline_apply.yml"
+
+# 离线包内系统依赖包目录（模板 offline-install.sh.j2 用此变量定位 .deb / .rpm）
+# 模板 offline-install.sh.j2 用它定位包内 .deb / .rpm 目录
+_offline_deb_dir: "{{ ruby_build_deb_dir }}"
