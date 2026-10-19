@@ -4,7 +4,7 @@ type: note
 status: active
 scope: Ubuntu 26.04 LTS 本地用户级安装（Node 由 nvm 托管，免 sudo）
 created: 2026-10-17 15:32:05
-updated: 2026-10-17 15:55:00
+updated: 2026-10-19 09:09:15
 summary: "按官方 npm 方式在用户目录安装 Pi 编码 Agent CLI（v1.3.0），覆盖安装路径、模型接入、扩展/MCP 管理与常用命令。"
 keywords: [linux, ubuntu, ai_agent, pi, coding-agent, npm, cli, install]
 verification: "pi --version 输出 1.3.0；pi --help 正常列出命令；~/.pi/agent 数据目录生成"
@@ -132,8 +132,10 @@ Pi **不内置**文件系统、进程、网络或凭据访问的权限限制，�
 | `pi: command not found` | 确认 `~/.nvm/versions/node/v24.0.0/bin` 在 `PATH` 中；新终端会自动加载 nvm |
 | 模型调用报未授权 | 在 Pi 内执行 `/login` 完成接入，或 `pi auth check --provider <名>` 查看状态 |
 | 项目级配置不生效 | 项目本地配置/资源受「项目信任」约束，用 `pi -a`（单次信任）或按官方 configuration 文档调整 |
+| 启动或调用 `find` 工具时报 `fd not found. Downloading...` / `getaddrinfo ENOTFOUND github.com` | 内置 `find` 依赖 `fd`，本地缺失且 github.com 不可达 | 安装 `fd-find`（提供 `fdfind`，Pi 自动识别）或按离线处置文档放入 `~/.pi/agent/bin/fd` |
 
 **关联文档**
+- [Pi 内置 find 工具依赖 fd：GitHub 不可达导致下载失败与内网离线补齐](20261019-pi-builtin-find-fd-offline-fix.md)（内网 APT 补齐 fd-find）
 - [Pi 编码 Agent 离线部署（两步法）](../devops_ai_agent/20261017-pi-offline-bundle-build-deploy-guide.md)（第一步通用 Node 运行时包 + 第二步 Pi 应用包；目标机免联网、免 sudo，`pi` 直接可用）
 - [Pi Agent 接入自建 LiteLLM 网关配置手册](20261017-pi-litellm-gateway-config-guide.md)（本机已按该手册接入内网网关并设为默认模型）
 - [AionUi 本地部署与使用手册](20261017-aionui-linux-deploy-guide.md)（支持把 Pi 作为外部 CLI Agent 接入）

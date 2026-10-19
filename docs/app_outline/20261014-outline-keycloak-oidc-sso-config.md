@@ -4,7 +4,7 @@ type: note
 status: active
 scope: app_outline
 created: 2026-10-14 19:33:43
-updated: 2026-10-14 19:33:43
+updated: 2026-10-16 14:00:00
 summary: "为内网 Outline 知识库接入 Keycloak（realms/master）OIDC 单点登录，覆盖 Keycloak 客户端创建、回调地址、用户邮箱验证、Outline 侧 OIDC_* 环境变量与生效，以及 email_verified 未验证导致登录被拒的根因与修复"
 keywords: [linux, ubuntu, outline, keycloak, oidc, sso, docker-compose, docker]
 verification: "curl -k -o /dev/null -w '%{http_code}' https://192.168.16.90:8443/ ; 登录页应出现 Continue with Keycloak 入口"
@@ -69,6 +69,12 @@ logout        .../protocol/openid-connect/logout
 
 > [!NOTE]
 > `Valid redirect URIs` 必须与 Outline 的回调完全一致（`<URL>/auth/oidc/callback`），否则回调报 `redirect_uri_mismatch`。
+
+> [!IMPORTANT]
+> **域名变更 / 迁移场景（2026-10-16 补充）**：Outline 的 `URL` 变更后（如迁移至 `https://doc.cdvire.cn`），须在该客户端的
+> `Valid redirect URIs` 追加 `https://doc.cdvire.cn/auth/oidc/callback`，并在 `Valid post logout redirect URIs` 与
+> `Web origins` 追加 `https://doc.cdvire.cn`；否则回跳报 Keycloak `invalid parameter: redirect_uri`。
+> Keycloak 侧改动**无需**重启 Outline（`URL` 已由容器环境提供，回调实时计算）。
 
 #### 2.3 用户邮箱验证（关键，决定能否登录）
 
@@ -174,6 +180,7 @@ cd /data/outline && sudo docker-compose logs --since=10m outline | grep -iE "oid
 | 页面提示“身份验证失败-您无权访问此工作区” | 同上（前端为通用文案），日志才是准确信息 | 查容器日志定位真实错误 |
 | 一旦某账号登录失败后再点登录仍失败 | Keycloak 存在 SSO 会话，重定向立刻复用同一（被拒）账号 | 先登出 Keycloak 或使用无痕窗口换账号 |
 | 回调 `redirect_uri_mismatch` | Keycloak `Valid redirect URIs` 与 `URL/auth/oidc/callback` 不一致 | 核对 2.2 回调地址 |
+| Keycloak 报 `invalid parameter: redirect_uri`（变更域名后） | `Valid redirect URIs` 未包含新域名的回调 | 按 2.2 补充 `https://<新域名>/auth/oidc/callback`（并同步 post logout / Web origins） |
 | 容器无法解析 Keycloak 域名 | 容器 DNS 与宿主不一致 | 确认宿主可解析 `keycloak.cdvire.cn`，必要时为容器指定 DNS |
 
 定位命令：
