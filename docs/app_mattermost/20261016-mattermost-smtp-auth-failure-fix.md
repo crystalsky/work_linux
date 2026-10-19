@@ -4,7 +4,7 @@ type: note
 status: active
 scope: 
 created: 2026-10-16 18:10:00
-updated: 2026-10-16 18:40:00
+updated: 2026-10-19 15:53:00
 summary: "Mattermost 系统控制台配置 SMTP 时依次报 unencrypted connection、authentication not enabled、553 Sender rejected、550 User unknown；根因分别为误用 mailcow(Postcow) 无 AUTH 的内部端口 10025、发件地址仍为默认 test@example.com、以及管理员测试收件人邮箱不存在。改为 10587(STARTTLS)、令 FeedbackEmail/ReplyToAddress 与账号一致、并将管理员邮箱改为真实有效地址后恢复。"
 keywords: [linux, docker, mattermost, smtp, mailcow, postcow, starttls, sender-rejected, troubleshooting]
 verification: "python3 smtplib 经 192.168.16.90:10587 STARTTLS 认证发信成功；系统控制台『测试连接』通过"
@@ -210,3 +210,9 @@ luli|lul@vire.cn|t
 3. mailcow 的 `10025` 内部端口不提供 SASL 认证，Mattermost 必须走提交端口（10587/10465），且安全模式要与端口匹配。
 4. `550 User unknown in virtual mailbox table` 是「测试连接收件人（登录管理员邮箱）在服务器上不存在」，需把管理员邮箱改为真实有效地址。
 5. 当页面保存不生效或需批量固化时，可直接编辑 bind 挂载的 `config.json` 并 `docker restart mattermost`。
+
+## 🔗 相关文档
+
+- [Mattermost 更换邮件服务器后 SMTP 测试再报 553 Sender address rejected（发件地址未归属认证账号）排查与修复](20261019-mattermost-smtp-sender-address-mismatch-fix.md)
+  —— 2026-10-19 邮件服务迁移至 `mail.vire.cn:587`（192.168.12.67）、认证账号改为 `mattermost@vire.cn` 后，
+  因 `FeedbackEmail` 仍为 `cicd@vire.cn` 导致第 2 条结论再次复发；本次经系统控制台修改即时生效，无需重启容器。

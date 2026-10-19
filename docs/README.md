@@ -28,6 +28,7 @@
   - [代理订阅链接备份](os_network/20260930-proxy-subscription-backup.md)（⚠️ 含订阅令牌，勿外泄）
 - **os_desktop**
   - [AppImage 应用安装模式总结（直接运行 / 安装到 /opt + 桌面集成）](os_desktop/20260601-appimage-install-patterns.md)
+  - [AppImageLauncher 使用手册（AppImage 集成 / 桌面条目 / appimagelauncherd / ail-cli / 卸载清理）](os_desktop/20261019-appimagelauncher-usage-guide.md)
   - [AppImage 版 Obsidian 点击 obsidian:// 链接报「无法理解该网址」：Electron 协议处理器只认 CHROME_DESKTOP 的根因与修复](os_desktop/20261017-obsidian-appimage-url-scheme-handler.md)（含 `scripts/devops/obsidian-appimage-integrate.sh`）
   - [fcitx5 五笔输入法安装记录（替代搜狗）](os_desktop/20260601-fcitx5-wubi-install.md)
   - [Firefox 浏览器卸载记录](os_desktop/20260601-firefox-uninstall-record.md)
@@ -138,6 +139,7 @@
   - [OpenWebUI + Dify + n8n 容器化运维平台部署指南](app_ops_platform/20260609-openwebui-dify-n8n-deploy-guide.md)
 - **app_mattermost**
   - [Mattermost 配置 SMTP 邮件失败（unencrypted connection / authentication not enabled）排查与修复](app_mattermost/20261016-mattermost-smtp-auth-failure-fix.md)（mailcow 内部端口 10025 无 AUTH，改用 10587/STARTTLS）
+  - [Mattermost 更换邮件服务器后 SMTP 测试再报 553 Sender address rejected（发件地址未归属认证账号）排查与修复](app_mattermost/20261019-mattermost-smtp-sender-address-mismatch-fix.md)（迁移至 mail.vire.cn:587/STARTTLS、账号 mattermost@vire.cn 后发件人未同步，改控制台即时生效）
 - **app_outline**
   - [Outline 内网知识库 Docker Compose 部署手册（HTTPS + 邮件登录）](app_outline/20260930-outline-deployment-guide.md)（宿主 nginx 反代变体见迁移手册 §8）
   - [Outline 内网知识库配置与使用手册（邮件登录/团队/存储/API/备份）](app_outline/20260930-outline-configuration-guide.md)
