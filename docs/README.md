@@ -95,6 +95,7 @@
   - [Agent-Reach 自建容器镜像与内网离线部署手册（零配置核心渠道 + 批量测试）](devops_ai_agent/20261013-agent-reach-container-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/agent-reach/`：`deploy.sh`、`build.sh`、`export.sh`、`tests/run-tests.sh`）
   - [TencentDB Agent Memory 三件套 Docker 内网离线部署手册（官方镜像 + 官方脚本编排）](devops_ai_agent/20261013-tencentdb-agent-memory-docker-offline-deploy.md)（含离线 bundle `/home/vire/_docker-packages/tencentdb-agent-memory/`：`deploy.sh`、`export.sh`、`images/`、`global-images/`）
   - [Pi（earendil-works/pi）编码 Agent CLI 的安装、配置与使用手册](devops_ai_agent/20261017-pi-coding-agent-install-usage-guide.md)（v1.3.0，用户级 npm 安装，免 sudo）
+  - [Pi 内置 find 工具依赖 fd：GitHub 不可达导致下载失败与内网离线补齐](devops_ai_agent/20261019-pi-builtin-find-fd-offline-fix.md)（内网 APT 安装 fd-find / 免 sudo 放置 ~/.pi/agent/bin/fd）
   - [Pi Agent 接入自建 LiteLLM 网关配置手册（OpenAI 兼容端点 + 默认模型）](devops_ai_agent/20261017-pi-litellm-gateway-config-guide.md)（网关 192.168.16.142:4000，实测含 tool calling 验证）
   - [Pi 编码 Agent 离线部署（两步法）：通用 Node 运行时包 + Pi 应用包](devops_ai_agent/20261017-pi-offline-bundle-build-deploy-guide.md)（含离线包 `~/.work_linux_working/artifacts/pi-app-offline-1.3.0.tar.gz` 25 MB；第一步 Node 包见 devops_nodejs 分类）
   - [Rowboat（rowboatlabs/rowboat）Linux 便携式部署与使用手册（官方 zip，免 sudo）](devops_ai_agent/20261017-rowboat-linux-portable-deploy-guide.md)（v1.0.5；Linux 无 AppImage，可选 deb/rpm/zip）
