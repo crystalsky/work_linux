@@ -1,0 +1,165 @@
+---
+# =============================================================================
+# 切换软件包管理器到国内镜像源 —— 只改源，不改系统
+# =============================================================================
+# 目的：在线安装时避免从 deb.debian.org / archive.ubuntu.com 慢速拉包。
+#
+# 安全边界：
+#   - 只在 install_base_apt_mirror_enabled=true 时执行（默认开启，境外可关）
+#   - 改动前自动备份原文件到 /etc/apt/sources.list.d/*.bak.<时间戳>
+#   - 已指向目标镜像时不做任何修改（幂等）
+#   - 仅支持 Debian/Ubuntu 的 deb822 与一行式两种源格式
+#
+# role 可在 include 前通过 install_base_apt_mirror_url 覆盖镜像地址。
+# =============================================================================
+
+- name: 换源 —— 检查是否启用
+  ansible.builtin.debug:
+    msg: >-
+      [换源] 启用={{ install_base_apt_mirror_enabled }} ｜
+      镜像={{ install_base_apt_mirror_url }}
+  tags: [install_base]
+
+- name: 换源 —— 执行替换
+  when:
+    - install_base_apt_mirror_enabled | bool
+    - install_base_facts.os_family == 'Debian'
+  tags: [install_base]
+  block:
+    # ---------- 1. 找出所有源文件 ----------
+    - name: 换源 —— 查找 deb822 格式源文件
+      ansible.builtin.find:
+        paths: /etc/apt/sources.list.d
+        patterns: "*.sources"
+        excludes:
+          - "*.orig-mirror-switch"
+          - "*~"
+      register: _apt_sources_deb822
+      become: true
+
+    - name: 换源 —— 查找传统一行式源文件
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list
+      register: _apt_sources_list_stat
+      become: true
+
+    # ---------- 2. 显式备份原始源文件 ----------
+    # 不用 replace 模块的 backup：它生成 xxx.sources.XXXX.时间~ 这类文件名，
+    # 虽然 apt 会忽略以 ~ 结尾的文件，但会干扰后续校验与人工排查。
+    - name: 换源 —— 备份原始源文件
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ item }}.orig-mirror-switch"
+        remote_src: true
+        mode: "0644"
+        force: false
+      loop: >-
+        {{ (_apt_sources_deb822.files | default([]) | map(attribute='path') | list)
+           + (['/etc/apt/sources.list']
+              if (_apt_sources_list_stat.stat.exists | default(false)) else []) }}
+      become: true
+
+    # ---------- 3. 处理 deb822（Debian 12+ 默认格式） ----------
+    # security 源单独处理，否则会被指向普通 archive 路径而 404
+    - name: 换源 —— 重写 deb822 安全源地址
+      ansible.builtin.replace:
+        path: "{{ item.path }}"
+        regexp: 'URIs:\s*https?://(security\.debian\.org|deb\.debian\.org/debian-security)\S*'
+        replace: 'URIs: {{ install_base_apt_security_mirror_url }}'
+        backup: false
+      loop: "{{ _apt_sources_deb822.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+      become: true
+      register: _apt_mirror_deb822_sec_result
+
+    - name: 换源 —— 重写 deb822 普通源地址
+      ansible.builtin.replace:
+        path: "{{ item.path }}"
+        regexp: 'URIs:\s*https?://(deb\.debian\.org|archive\.ubuntu\.com|deb\.ubuntu\.com)(?!/debian-security)\S*'
+        replace: 'URIs: {{ install_base_apt_mirror_url }}'
+        backup: false
+      loop: "{{ _apt_sources_deb822.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+      become: true
+      register: _apt_mirror_deb822_result
+
+    - name: 换源 —— deb822 源已更新
+      ansible.builtin.debug:
+        msg: "已更新 {{ _apt_mirror_deb822_result.results | selectattr('changed') | list | length }} 个 deb822 源文件"
+      when: _apt_mirror_deb822_result.results | default([]) | length > 0
+
+    # ---------- 4. 处理传统一行式 ----------
+    - name: 换源 —— 重写一行式安全源地址
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list
+        regexp: 'https?://(security\.debian\.org|deb\.debian\.org/debian-security)\S*'
+        replace: '{{ install_base_apt_security_mirror_url }}'
+        backup: false
+      become: true
+      when: _apt_sources_list_stat.stat.exists | default(false)
+      register: _apt_mirror_list_sec_result
+
+    - name: 换源 —— 重写一行式普通源地址
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list
+        regexp: 'https?://(deb\.debian\.org|archive\.ubuntu\.com|deb\.ubuntu\.com)(?!/debian-security)\S*'
+        replace: '{{ install_base_apt_mirror_url }}'
+        backup: false
+      become: true
+      when: _apt_sources_list_stat.stat.exists | default(false)
+      register: _apt_mirror_list_result
+
+    # ---------- 5. 校验换源结果 ----------
+    - name: 换源 —— 读取最终生效的源地址
+      ansible.builtin.shell: |
+        set -u
+        {
+          grep -rhE '^URIs:' /etc/apt/sources.list.d/ 2>/dev/null \
+            | grep -v 'orig-mirror-switch' | sed -E 's/^URIs:\s*//' || true
+          grep -hE '^deb ' /etc/apt/sources.list 2>/dev/null | awk '{print $2}' || true
+        } | sort -u
+      args:
+        executable: /bin/bash
+      register: _apt_mirror_final
+      changed_when: false
+      become: true
+
+    - name: 换源 —— 输出最终源地址
+      ansible.builtin.debug:
+        msg: "当前生效的软件源：{{ _apt_mirror_final.stdout_lines | default([]) }}"
+
+    # ---------- 6. 刷新缓存 ----------
+    - name: 换源 —— 刷新 apt 缓存
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0
+        dpkg_options: 'force-confdef,force-confold'
+        lock_timeout: "{{ install_base_apt_lock_timeout }}"
+      become: true
+      register: _apt_mirror_cache_update
+      retries: 3
+      delay: 10
+      until: _apt_mirror_cache_update is succeeded
+      when:
+        - (_apt_mirror_deb822_result.changed | default(false))
+          or (_apt_mirror_deb822_sec_result.changed | default(false))
+          or (_apt_mirror_list_result.changed | default(false))
+          or (_apt_mirror_list_sec_result.changed | default(false))
+
+    - name: 换源 —— 完成
+      ansible.builtin.debug:
+        msg: "✅ apt 源已指向 {{ install_base_apt_mirror_url }}"
+
+- name: 换源 —— 未启用时的提示
+  ansible.builtin.debug:
+    msg: "ℹ️  未启用国内镜像源，保持系统原有配置（install_base_apt_mirror_enabled=false）"
+  when: not (install_base_apt_mirror_enabled | bool)
+  tags: [install_base]
+
+- name: 换源 —— 非 Debian 系跳过
+  ansible.builtin.debug:
+    msg: "ℹ️  {{ install_base_facts.os_distribution }} 不使用 apt，跳过换源"
+  when: install_base_facts.os_family != 'Debian'
+  tags: [install_base]

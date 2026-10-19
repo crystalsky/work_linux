@@ -2,10 +2,10 @@
 title: "【安装配置】Pi（earendil-works/pi）编码 Agent CLI 的安装、配置与使用手册"
 type: note
 status: active
-scope: Ubuntu 26.04 LTS 本地用户级安装（Node 由 nvm 托管，免 sudo）
+scope: Ubuntu 26.04 LTS / Ubuntu 20.04 LTS 本地用户级安装（Node 由 nvm 托管，免 sudo）
 created: 2026-10-17 15:32:05
-updated: 2026-10-19 09:09:15
-summary: "按官方 npm 方式在用户目录安装 Pi 编码 Agent CLI（v1.3.0），覆盖安装路径、模型接入、扩展/MCP 管理与常用命令。"
+updated: 2026-10-18 10:45:00
+summary: "按官方 npm 方式在用户目录安装 Pi 编码 Agent CLI（v1.3.0），覆盖安装路径、模型接入、扩展/MCP 管理、常用命令及内网 npm 源不可达时的排错。"
 keywords: [linux, ubuntu, ai_agent, pi, coding-agent, npm, cli, install]
 verification: "pi --version 输出 1.3.0；pi --help 正常列出命令；~/.pi/agent 数据目录生成"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。"
@@ -57,6 +57,38 @@ command -v pi        # /home/vire/.nvm/versions/node/v24.0.0/bin/pi
 pi --version         # 1.3.0
 pi --help            # 列出 install/remove/list/config/update/mcp/auth 等子命令
 ```
+
+#### 2.1 内网 npm 源不可达时的处理（Ubuntu 20.04 + Node 22.23.3 实测）
+
+某台 Ubuntu 20.04 机器的 `~/.npmrc` 把默认源指向内网私服（形如 `http://<内网IP>:3333/api/packages/admin/npm/`），私服离线时安装会直接失败：
+
+```text
+npm error code ECONNREFUSED
+npm error FetchError: request to http://<内网IP>:3333/api/packages/admin/npm/@earendil-works%2fpi-coding-agent failed
+```
+
+排查与处置：
+
+```bash
+# 1. 确认当前源
+npm config get registry
+
+# 2. 测试公共源连通性（二者任一可用即可）
+curl -sI https://registry.npmjs.org/     -o /dev/null -w '%{http_code}\n'
+curl -sI https://registry.npmmirror.com/ -o /dev/null -w '%{http_code}\n'
+
+# 3. 仅对本次安装覆盖源，不改动 ~/.npmrc（推荐，避免影响内网私服使用者）
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
+  --registry=https://registry.npmjs.org/
+# 可以更改源
+npm config set registry https://registry.npmjs.org/
+npm config set registry https://registry.npmmirror.com
+
+# 4. 验证
+command -v pi && pi --version   # /home/xskyx/.nvm/versions/node/v22.23.3/bin/pi → 1.3.0
+```
+
+实测输出：`added 118 packages in 3m`（npm 10.9.9 / Node v22.23.3）。若需长期切换默认源，应显式确认后再修改 `~/.npmrc`，不建议在无人值守场景直接覆盖。
 
 ### 3. 配置文件与目录
 
@@ -120,15 +152,66 @@ npm uninstall -g @earendil-works/pi-coding-agent
 rm -rf ~/.pi
 ```
 
+### 5.1 升级 Node（nvm 切版本）后 Pi 的迁移
+
+Pi 本体是 npm 全局包，挂在 nvm 的 Node 版本目录下；Pi 的扩展/技能则装在用户级目录，二者升级 Node 时的处理不同：
+
+**1. Pi 本体（npm 全局 CLI）—— 需迁移到新 Node 版本。**
+`which pi` 指向 `~/.nvm/versions/node/<版本>/lib/node_modules/@earendil-works/pi-coding-agent/`，
+切到新 Node 版本后该路径下没有 pi。迁移二选一（nvm 通用方式，详见
+`docs/devops_nodejs/20261018-nvm-nodejs-version-management-guide.md`）：
+
+```bash
+# 方式 A：装新版本时自动把旧版本的全局包重装一遍（推荐）
+nvm install lts/krypton --reinstall-packages-from=22
+
+# 方式 B：装完新版本后手动重装 pi
+nvm install lts/krypton && nvm use 24 && npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+```
+
+**2. Pi 的扩展/技能 —— 无需重装，不会丢。**
+它们装在用户级目录，与 Node 版本无关：`~/.pi/agent/extensions/`、`~/.pi/agent/npm/`、
+`~/.pi/agent/git/`、`~/.agents/skills/`（19 个）。切换 Node 版本后依然存在。
+
+**3. 扩展的 Node 版本要求（EBADENGINE 告警）。**
+部分扩展声明了 `engines` 字段要求更高版本的 Node，例如实测 `pi update --extensions` 更新
+`npm:om-memory-system` 时，`pi-cowboy@0.15.2` 报：
+
+```text
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'pi-cowboy@0.15.2',
+npm warn EBADENGINE   required: { node: '>=24.20.0', pnpm: '>=12' },
+npm warn EBADENGINE   current: { node: 'v22.23.3', npm: '10.9.9' }
+npm warn EBADENGINE }
+```
+
+该告警表示 pi-cowboy **运行时**依赖 Node ≥ 24.20.0，但扩展文件本身无需重装——只要把当前生效的
+Node 切到 24（见上），告警即消失；不升级 Node 则 pi-cowboy 相关功能可能在 Node 22 下运行异常。
+
 ### 6. 安全边界（官方明确说明）
 
 Pi **不内置**文件系统、进程、网络或凭据访问的权限限制，默认以启动用户的权限运行。官方给出三种隔离路径：Gondolin 扩展（把内置工具与 `!` 命令路由进本地 Linux 微虚拟机）、纯 Docker 容器运行、OpenShell 策略沙箱。生产/敏感目录使用前建议容器化。
+
+
+### 7. 插件的安装
+pi install npm:om-memory-system
+pi install npm:billion-context
+pi install npm:pi-cowboy
+pi install npm:pi-mcp-adapter
+pi install npm:pi-btw
+pi install npm:pi-web-access
+pi install npm:pi-subagents
+pi install npm:bigpowers
+pi install npm:@jopqior/pi-subagents
+pi install npm:@jopqior/pi-subagents-model-selector
+pi install npm:pi-note
 
 ## 🔍 验证与排错
 
 | 现象 | 处理 |
 |------|------|
 | `install.sh` 卡住无响应 | 脚本含交互提问，改用 npm 方式，或在可交互终端执行 |
+| `npm error ECONNREFUSED <内网IP>:3333` | `~/.npmrc` 默认源指向不可达私服，本次安装追加 `--registry=https://registry.npmjs.org/`（见 2.1） |
 | `pi: command not found` | 确认 `~/.nvm/versions/node/v24.0.0/bin` 在 `PATH` 中；新终端会自动加载 nvm |
 | 模型调用报未授权 | 在 Pi 内执行 `/login` 完成接入，或 `pi auth check --provider <名>` 查看状态 |
 | 项目级配置不生效 | 项目本地配置/资源受「项目信任」约束，用 `pi -a`（单次信任）或按官方 configuration 文档调整 |

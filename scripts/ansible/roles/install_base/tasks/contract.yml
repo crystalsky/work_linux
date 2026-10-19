@@ -1,0 +1,102 @@
+---
+# =============================================================================
+# 契约校验 —— 每个 install_<pkg> role 在 main.yml 最开头 include 本片段
+# =============================================================================
+# 目标：在所有动作发生「之前」把变量冲突全部拦下来。
+# 一旦进入安装流程才发现变量矛盾，可能已经改了一半文件，违反原子化原则。
+#
+# 注意执行顺序：先算出 _effective_install_mode，后续断言才能依赖它。
+# =============================================================================
+
+- name: 校验 —— 必填变量是否齐备
+  ansible.builtin.assert:
+    that:
+      - install_pkg_name is defined
+      - install_pkg_name | length > 0
+    fail_msg: "install_pkg_name 未定义。每个 install_<pkg> role 必须设置该变量。"
+    quiet: true
+  tags: [install_base]
+
+# 必须先解析得出生效模式，后面的断言才能判断 online / offline
+- name: 解析生效的安装模式（支持逐包覆盖）
+  ansible.builtin.set_fact:
+    _effective_install_mode: >-
+      {{ install_mode_overrides[install_pkg_name] | default(install_mode) }}
+  tags: [install_base]
+
+- name: 校验 —— install_mode 取值合法
+  ansible.builtin.assert:
+    that:
+      - _effective_install_mode in ['online', 'offline']
+    fail_msg: >-
+      install_mode 非法 [{{ _effective_install_mode }}]，
+      仅允许 online / offline
+    quiet: true
+  tags: [install_base]
+
+- name: 校验 —— 离线模式与离线打包不可同时进行
+  ansible.builtin.assert:
+    that:
+      - not (_effective_install_mode == 'offline' and (make_offline_package | default(false)))
+    fail_msg: >-
+      install_mode=offline 时不应再设置 make_offline_package=true。
+      离线打包的前提是先用在线方式装好，二者互斥。
+    quiet: true
+  tags: [install_base]
+
+- name: 校验 —— 离线包来源必须二选一
+  ansible.builtin.assert:
+    that:
+      - not ((offline_package_path | default('') | length > 0)
+             and (offline_package_url | default('') | length > 0))
+    fail_msg: >-
+      offline_package_path 与 offline_package_url 不能同时设置，请只保留一个。
+    quiet: true
+  when: _effective_install_mode == 'offline'
+  tags: [install_base]
+
+- name: 校验 —— 离线模式必须提供包来源
+  ansible.builtin.assert:
+    that:
+      - (offline_package_path | default('') | length > 0)
+        or (offline_package_url | default('') | length > 0)
+    fail_msg: >-
+      install_mode=offline 但未提供 offline_package_path 或 offline_package_url，
+      无从安装。
+    quiet: true
+  when: _effective_install_mode == 'offline'
+  tags: [install_base]
+
+- name: 校验 —— 分发方式合法
+  ansible.builtin.assert:
+    that:
+      - offline_distribute_method in ['sftp', 'local']
+    fail_msg: >-
+      offline_distribute_method 非法 [{{ offline_distribute_method }}]，
+      仅允许 sftp / local
+    quiet: true
+  tags: [install_base]
+
+- name: 校验 —— sftp 分发时必填参数
+  ansible.builtin.assert:
+    that:
+      - sftp_host | length > 0
+      - sftp_user | length > 0
+      - sftp_path | length > 0
+    fail_msg: >-
+      offline_distribute_method=sftp 时必须提供 sftp_host / sftp_user / sftp_path
+    quiet: true
+  when:
+    - offline_distribute_enabled | default(false) | bool
+    - offline_distribute_method == 'sftp'
+  tags: [install_base]
+
+- name: 校验 —— 校验算法合法
+  ansible.builtin.assert:
+    that:
+      - install_base_checksum_algo in ['sha256', 'md5']
+    fail_msg: >-
+      install_base_checksum_algo 非法 [{{ install_base_checksum_algo }}]，
+      仅允许 sha256 / md5
+    quiet: true
+  tags: [install_base]

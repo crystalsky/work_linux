@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: install_nvm
+  author: work-linux
+  description: >-
+    安装 nvm（Node Version Manager）本体，支持在线（GitHub release 源码快照）
+    与离线（tar.gz 目录树）双模式，装到多用户共享前缀 nvm_prefix。
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions: [trixie]
+    - name: Ubuntu
+      versions: [focal]
+  galaxy_tags:
+    - nodejs
+    - nvm
+    - development
+
+dependencies: []

@@ -1,0 +1,20 @@
+[project]
+name = "work-linux-ansible"
+version = "0.1.0"
+description = "work_linux 运维仓库的 Ansible 控制端环境（Debian 13 沙箱接管验证）"
+readme = "README.md"
+# 锁定 3.13：与沙箱镜像（Debian 13 自带 3.13）保持一致；
+# ansible-core 尚未适配 Python 3.15，故上限封在 3.14 以下
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "ansible-core>=2.18,<2.21",
+]
+
+[dependency-groups]
+dev = [
+    "yamllint>=1.35",
+    "ansible-lint>=24.0",
+]
+
+[tool.uv]
+package = false

@@ -1,0 +1,242 @@
+---
+# =============================================================================
+# install_nodejs —— 离线安装
+# =============================================================================
+# 离线包结构（install_base 打包绝对路径去掉开头 / 后的样子）：
+#   nodejs22-22.tar.gz
+#   ├── opt/nvm/versions/node/v22.21.1/
+#   │   ├── bin/{node,npm,npx,corepack}
+#   │   ├── lib/node_modules/npm/...
+#   │   └── ...
+#   └── tmp/ansible-pkg/nodejs-runtime-deb/*.deb   （若启用运行库随包）
+#
+# 兼容布局：
+#   absolute  <extract>/opt/nvm/versions/node/v22.*      ← 默认产物
+#   flat      <extract>/v22.*                            ← 手工整理的包
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 离线 —— 定位包内 node 版本目录"
+  ansible.builtin.shell: |
+    set -u
+    D="{{ _install_pkg_extract_dir }}"
+    for cand in \
+      "$D/opt/nvm/versions/node" \
+      "$D/nvm/versions/node" \
+      "$D/versions/node" \
+      "$D"; do
+      if [ -d "$cand" ]; then
+        HIT="$(ls -d "$cand"/v{{ nodejs_major_version }}.* 2>/dev/null | sort -V | tail -1)"
+        if [ -n "$HIT" ] && [ -x "$HIT/bin/node" ]; then
+          echo "prefix=$HIT"
+          echo "layout=known:$cand"
+          exit 0
+        fi
+      fi
+    done
+    HIT="$(find "$D" -maxdepth 6 -type f -name node \
+             -path "*v{{ nodejs_major_version }}.*/bin/node" 2>/dev/null | head -1)"
+    if [ -n "$HIT" ]; then
+      echo "prefix=$(dirname "$(dirname "$HIT")")"
+      echo "layout=found"
+      exit 0
+    fi
+    echo "prefix="
+    echo "layout=none"
+  args:
+    executable: /bin/bash
+  register: _nodejs_offline_layout
+  changed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 校验离线包内容"
+  ansible.builtin.assert:
+    that:
+      - "'layout=none' not in _nodejs_offline_layout.stdout"
+    fail_msg: >-
+      离线包内未找到 v{{ nodejs_major_version }}.* 的 node 二进制。
+      解压目录：{{ _install_pkg_extract_dir }}
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录包内路径"
+  ansible.builtin.set_fact:
+    _nodejs_offline_root: >-
+      {{ (_nodejs_offline_layout.stdout | regex_findall('prefix=([^\n]+)') | first
+          | default('', true)) }}
+
+- name: "[{{ install_pkg_name }}] 离线 —— 输出识别到的布局"
+  ansible.builtin.debug:
+    msg: >-
+      {{ (_nodejs_offline_layout.stdout | regex_findall('layout=([^\n]+)') | first
+          | default('unknown', true)) }} ｜ 版本目录 = {{ _nodejs_offline_root }}
+
+# -----------------------------------------------------------------------------
+# 系统运行库（若随包携带）
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 离线 —— 探测随包运行库 deb"
+  ansible.builtin.shell: |
+    set -u
+    find "{{ _install_pkg_extract_dir }}" -maxdepth 6 -name '*.deb' 2>/dev/null | wc -l
+  args:
+    executable: /bin/bash
+  register: _nodejs_offline_debcount
+  changed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 安装随包运行库"
+  ansible.builtin.shell: |
+    set -u
+    LH="$(find "{{ _install_pkg_extract_dir }}" -maxdepth 6 -name '*.deb' 2>/dev/null \
+          | head -1 | xargs -r dirname)"
+    cd "$LH"
+    find . -maxdepth 1 -name '*.deb' -print0 | sort -z \
+      | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
+    dpkg --configure -a >/dev/null 2>&1 || true
+    echo "dpkg_done"
+  args:
+    executable: /bin/bash
+  register: _nodejs_offline_deb_install
+  changed_when: "'dpkg_done' in _nodejs_offline_deb_install.stdout"
+  failed_when: false
+  when: _nodejs_offline_debcount.stdout | trim | default('0') | int > 0
+
+# -----------------------------------------------------------------------------
+# 部署 node 版本目录
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 离线 —— 部署到 nvm 版本目录"
+  ansible.builtin.shell: |
+    set -eu
+    SRC="{{ _nodejs_offline_root }}"
+    VER="$(basename "$SRC")"
+    DST="{{ nvm_prefix }}/versions/node/$VER"
+    mkdir -p "{{ nvm_prefix }}/versions/node"
+    if [ -d "$DST" ]; then
+      rm -rf "$DST"
+    fi
+    cp -a "$SRC" "$DST"
+    chmod -R u+rwX,go+rX "$DST"
+    echo "DEPLOYED_TO=$DST"
+    echo "VER=$VER"
+  args:
+    executable: /bin/bash
+  register: _nodejs_offline_deploy
+  changed_when: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录部署后的版本目录"
+  ansible.builtin.set_fact:
+    _nodejs_dir: >-
+      {{ (_nodejs_offline_deploy.stdout | regex_findall('DEPLOYED_TO=([^\n]+)') | first
+          | default('', true)) }}
+    _nodejs_ver: >-
+      {{ (_nodejs_offline_deploy.stdout | regex_findall('VER=([^\n]+)') | first
+          | default('', true)) }}
+
+# -----------------------------------------------------------------------------
+# nvm 元数据：离线安装不会自动生成 default 别名，这里补齐
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 离线 —— 确保 nvm.sh 可用"
+  ansible.builtin.stat:
+    path: "{{ nvm_prefix }}/nvm.sh"
+  register: _nodejs_offline_nvmsh
+
+- name: "[{{ install_pkg_name }}] 离线 —— 设置 nvm default 别名"
+  ansible.builtin.shell: |
+    set -eu
+    export NVM_DIR="{{ nvm_prefix }}"
+    . "{{ nvm_prefix }}/nvm.sh" >/dev/null 2>&1
+    nvm alias default "{{ _nodejs_ver }}" 2>&1
+  args:
+    executable: /bin/bash
+  register: _nodejs_offline_alias
+  changed_when: true
+  when:
+    - nodejs_set_default | bool
+    - _nodejs_offline_nvmsh.stat.exists | default(false)
+
+- name: "[{{ install_pkg_name }}] 离线 —— nvm 缺失时告警"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  未找到 {{ nvm_prefix }}/nvm.sh，default 别名未设置。"
+      - "    node 二进制本身已就位，wrapper 可直接使用；"
+      - "    如需 nvm 管理，请先部署 install_nvm 的离线包。"
+  when: not (_nodejs_offline_nvmsh.stat.exists | default(false))
+
+- name: "[{{ install_pkg_name }}] 离线 —— 生成命令 wrapper"
+  ansible.builtin.template:
+    src: node-wrapper.sh.j2
+    dest: "{{ nodejs_bin_link_dir }}/{{ item }}"
+    mode: "0755"
+  loop: "{{ nodejs_wrapper_commands }}"
+  when: nodejs_link_commands | bool
+
+- name: "[{{ install_pkg_name }}] 离线 —— 写入全局 npm 配置"
+  ansible.builtin.copy:
+    dest: /etc/npmrc
+    mode: "0644"
+    content: |
+      ; 由 install_nodejs role 生成
+      {% if nodejs_npm_registry | length > 0 %}
+      registry={{ nodejs_npm_registry }}
+      {% endif %}
+      strict-ssl={{ 'true' if nodejs_npm_strict_ssl | bool else 'false' }}
+      fund=false
+      audit=false
+
+# -----------------------------------------------------------------------------
+# 校验
+# -----------------------------------------------------------------------------
+- name: "[{{ install_pkg_name }}] 离线 —— 校验 node/npm 可调用"
+  ansible.builtin.shell: |
+    set -u
+    echo "node=$("{{ nodejs_bin_link_dir }}/node" --version 2>&1 | head -1)"
+    echo "npm=$("{{ nodejs_bin_link_dir }}/npm" --version 2>&1 | head -1)"
+  args:
+    executable: /bin/bash
+  register: _nodejs_offline_verify
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录实际版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ (_nodejs_offline_verify.stdout | default('')
+          | regex_findall('node=v([0-9]+[.][0-9]+[.][0-9]+)') | first
+          | default('unknown', true)) }}
+
+- name: "[{{ install_pkg_name }}] 离线 —— 校验失败则中止（触发回滚）"
+  ansible.builtin.assert:
+    that:
+      - _nodejs_offline_verify.stdout is search('node=v[0-9]+[.][0-9]+[.][0-9]+')
+    fail_msg: >-
+      node/npm 离线部署后校验失败：
+      {{ _nodejs_offline_verify.stdout | default('') }}
+      {{ _nodejs_offline_verify.stderr | default('') }}
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 检查 node 的动态库依赖"
+  ansible.builtin.shell: |
+    set -u
+    M="$(ldd "{{ nodejs_bin_link_dir }}/node" 2>/dev/null \
+         | grep 'not found' | awk '{print $1}' | tr '\n' ' ')"
+    if [ -n "$M" ]; then
+      echo "status=missing"
+      echo "missing=$M"
+    else
+      echo "status=ok"
+    fi
+  args:
+    executable: /bin/bash
+  register: _nodejs_offline_libs
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 缺少运行库时告警"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  node 存在缺失的动态库，可能无法运行："
+      - "{{ _nodejs_offline_libs.stdout | default('') }}"
+      - "    补救：在目标机准备对应运行库包（如 libstdc++6）。"
+  when: "'status=missing' in _nodejs_offline_libs.stdout | default('')"
+
+- name: "[{{ install_pkg_name }}] 离线 —— 输出结果"
+  ansible.builtin.debug:
+    msg: >-
+      ✅ Node.js {{ install_pkg_version_actual }} 离线安装完成
+      ｜ 目录 {{ _nodejs_dir }}

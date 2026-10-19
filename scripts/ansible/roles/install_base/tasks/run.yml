@@ -1,0 +1,123 @@
+---
+# =============================================================================
+# 执行阶段 —— 按决策结果分派到不同路径
+# =============================================================================
+# 三条路径互斥：
+#   A. 离线打包（make_offline_package=true）：在线装 -> 打包 -> 分发
+#   B. 在线安装（install_mode=online）：role 的 online_install.yml
+#   C. 离线安装（install_mode=offline）：基座通用流程 + role 的 offline_apply.yml
+#
+# 原子化保障：
+#   - 已安装且状态正常（_install_action=skip）时，一条动作都不执行
+#   - C 路径失败时自动回滚（见 rollback.yml）
+# =============================================================================
+
+# ---------- 零操作路径：什么都不做 ----------
+- name: "[{{ install_pkg_name }}] 跳过 —— 目标已就绪"
+  ansible.builtin.debug:
+    msg:
+      - "✅ {{ install_pkg_name }} 已就位，本次不执行任何修改。"
+      - "    {{ _install_action_reason | default('') }}"
+      - "    如需强制重装，请设置 install_force=true。"
+  when:
+    - _install_action | default('install') == 'skip'
+    - not (make_offline_package | default(false) | bool)
+
+# 原子化有一个固有盲区：探测只看"能否执行"，不看"版本是否达标"。
+# 于是会出现「决策=skip，但实际版本低于 install_pkg_version」的情况
+# （典型：发行版仓库给的 ruby 3.3.8，目标是 3.4）。
+# 这不应当失败，但必须让操作者看见，
+# 否则一次检查通过就会让人误以为版本已经满足。
+- name: "[{{ install_pkg_name }}] 跳过 —— 检查版本是否达到目标"
+  ansible.builtin.shell: |
+    set -u
+    {{ _install_probe_cmd }} 2>/dev/null | head -1 || true
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _install_skip_version_probe
+  changed_when: false
+  failed_when: false
+  when:
+    - _install_action | default('install') == 'skip'
+    - install_pkg_version is defined
+
+- name: "[{{ install_pkg_name }}] 跳过 —— 版本低于目标时告警"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  已安装版本低于目标版本，但本次不自动升级。"
+      - "    探测输出：{{ _install_skip_version_probe.stdout | trim | default('(空)', true) }}"
+      - "    目标版本：{{ install_pkg_version }}"
+      - "    如需升级，请设置 install_force=true 并确认升级路径（如 ruby_install_method=source）。"
+  when:
+    - _install_action | default('install') == 'skip'
+    - _install_skip_version_probe.stdout | default('', true) | trim | length > 0
+    # 目标版本必须是形如 X.Y[.Z] 的数字版本；像 rust 的 "stable" 这类频道名跳过比较
+    - install_pkg_version | default('') | string
+      | regex_findall('^[0-9]+[.][0-9]+') | length > 0
+    - not (_install_skip_version_probe.stdout | trim
+           | regex_findall('[0-9]+[.][0-9]+') | first | default('0.0', true)
+           is version(install_pkg_version, '>='))
+
+# ---------- 路径 A：制作离线包 ----------
+- name: "[{{ install_pkg_name }}] 路径 A —— 制作离线包"
+  when: make_offline_package | default(false) | bool
+  block:
+    # role_path 在这里指向 install_base 自身，不能直接写死
+    # online_install.yml —— 那会跑到基座目录里找一个不存在的文件。
+    # 由 role 提供 _install_online_tasks 指向自己的在线安装任务文件。
+    - name: "[{{ install_pkg_name }}] 打包前先确保在线安装完成"
+      ansible.builtin.include_tasks: "{{ _install_online_tasks }}"
+      when: install_state == 'absent'
+
+    # apt 类 role 的「安装产物」不是目录树，而是要额外收集的包文件。
+    # role 通过 _install_prepack_tasks 提供自己的准备步骤。
+    - name: "[{{ install_pkg_name }}] 打包前准备产物集合"
+      ansible.builtin.include_tasks: "{{ _install_prepack_tasks }}"
+      when:
+        - _install_prepack_tasks | default('') | length > 0
+        - install_state != 'absent'
+
+    - name: "[{{ install_pkg_name }}] 打包并分发"
+      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/make_offline_package.yml"
+
+    - name: "[{{ install_pkg_name }}] 分发产物"
+      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/distribute.yml"
+
+# ---------- 路径 B：在线安装 ----------
+- name: "[{{ install_pkg_name }}] 路径 B —— 在线安装"
+  when:
+    - not (make_offline_package | default(false) | bool)
+    - _install_action | default('install') in ['install', 'repair']
+    - _effective_install_mode == 'online'
+  ansible.builtin.include_tasks: "{{ _install_online_tasks }}"
+
+- name: "[{{ install_pkg_name }}] 在线安装后写状态标记"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/write_state.yml"
+  when:
+    - not (make_offline_package | default(false) | bool)
+    - _install_action | default('install') in ['install', 'repair']
+    - _effective_install_mode == 'online'
+
+# ---------- 路径 C：离线安装（带回滚） ----------
+- name: "[{{ install_pkg_name }}] 路径 C —— 离线安装"
+  when:
+    - not (make_offline_package | default(false) | bool)
+    - _install_action | default('install') in ['install', 'repair']
+    - _effective_install_mode == 'offline'
+  block:
+    - name: "[{{ install_pkg_name }}] 记录回滚点"
+      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/snapshot.yml"
+
+    - name: "[{{ install_pkg_name }}] 离线安装流程"
+      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/offline_install.yml"
+
+  rescue:
+    - name: "[{{ install_pkg_name }}] 安装失败，执行回滚"
+      ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/rollback.yml"
+
+    - name: "[{{ install_pkg_name }}] 回滚完成后重新抛出失败"
+      ansible.builtin.fail:
+        msg: >-
+          {{ install_pkg_name }} 离线安装失败，已回滚到安装前状态。
+          详细信息见上方错误输出。

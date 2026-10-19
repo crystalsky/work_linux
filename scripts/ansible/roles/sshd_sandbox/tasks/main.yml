@@ -1,0 +1,22 @@
+---
+- name: 部署 sshd 沙箱配置
+  ansible.builtin.template:
+    src: 99-sandbox.conf.j2
+    dest: "{{ sshd_sandbox_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: 重载 sshd
+
+- name: 确保 /run/sshd 存在
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: 校验 sshd 运行中
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false

@@ -1,0 +1,27 @@
+---
+# =============================================================================
+# install_base —— role 入口
+# =============================================================================
+# 作为依赖被 install_<pkg> 引入时，本 role 只需完成「一次性环境初始化」：
+#   1. 识别 OS / 架构，产出 install_base_facts
+#   2. 创建状态目录、缓存目录、临时目录
+#   3. 写入哨兵标记，后续同一次 play 内的其它 role 依赖直接跳过
+#
+# 之所以要哨兵：install_base 被 N 个 install_<pkg> 依赖时会执行 N 次，
+# 而这些初始化动作只需要一次。用 /var/lib/ansible-install-state/_base.ready
+# 做幂等，配合 run_once 语义，避免重复 apt cache 刷新等开销。
+# =============================================================================
+
+- name: 初始化基座 —— 识别系统环境
+  ansible.builtin.import_tasks: detect_os.yml
+  tags: [install_base, always]
+
+- name: 初始化基座 —— 创建目录
+  ansible.builtin.import_tasks: prepare_dirs.yml
+  tags: [install_base]
+
+# 换源必须在任何 apt 动作之前，否则首轮下载仍然走境外源
+- name: 初始化基座 —— 配置国内镜像源
+  ansible.builtin.import_tasks: configure_apt_mirror.yml
+  tags: [install_base, apt_mirror]
+  when: install_mode | default('online') == 'online'

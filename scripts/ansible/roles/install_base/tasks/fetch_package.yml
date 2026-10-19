@@ -1,0 +1,104 @@
+---
+# =============================================================================
+# 离线包获取 —— 从本地路径或 HTTP(S) URL 落到 install_base_cache_dir
+# =============================================================================
+# 优先级：offline_package_path > offline_package_url
+# 二者互斥性已在 contract.yml 校验过。
+#
+# 产出：_install_pkg_local_file（包在本机的绝对路径）
+# =============================================================================
+
+- name: 获取 —— 从本地路径读取离线包
+  when: offline_package_path | default('') | length > 0
+  block:
+    - name: 获取 —— 校验源文件存在
+      ansible.builtin.stat:
+        path: "{{ offline_package_path }}"
+      register: _install_src_stat
+
+    - name: 获取 —— 源文件不存在时的处理
+      when: not _install_src_stat.stat.exists
+      block:
+        - name: 获取 —— 离线包缺失告警
+          ansible.builtin.debug:
+            msg:
+              - "⚠️  离线包不存在：{{ offline_package_path }}"
+              - "    install_offline_fallback_online={{ install_offline_fallback_online }}"
+
+        - name: 获取 —— 缺包且未允许降级则直接失败
+          ansible.builtin.fail:
+            msg: >-
+              离线包 {{ offline_package_path }} 不存在，且
+              install_offline_fallback_online=false，安装中止。
+          when: not (install_offline_fallback_online | bool)
+
+        - name: 获取 —— 标记降级为在线安装
+          ansible.builtin.set_fact:
+            _effective_install_mode: online
+            _install_fallback_reason: "离线包缺失，已降级为在线安装"
+          when: install_offline_fallback_online | bool
+
+    - name: 获取 —— 拷贝离线包到缓存目录
+      ansible.builtin.copy:
+        src: "{{ offline_package_path }}"
+        dest: "{{ _install_pkg_local_file }}"
+        remote_src: true
+        mode: "0644"
+      become: true
+      when:
+        - _install_src_stat.stat.exists
+        - offline_package_path != _install_pkg_local_file
+      register: _install_pkg_copied
+
+    # 校验文件必须跟包一起搬，否则 verify_checksum.yml 在缓存目录里
+    # 找不到「同名 .sha256」，会判定为「缺少校验值」而中止。
+    - name: 获取 —— 探测同名校验文件是否存在
+      ansible.builtin.stat:
+        path: "{{ offline_package_path }}.{{ install_base_checksum_algo }}"
+      register: _install_src_checksum_stat
+      when:
+        - _install_src_stat.stat.exists
+        - offline_package_path != _install_pkg_local_file
+
+    - name: 获取 —— 拷贝同名校验文件到缓存目录
+      ansible.builtin.copy:
+        src: "{{ offline_package_path }}.{{ install_base_checksum_algo }}"
+        dest: "{{ _install_pkg_local_file }}.{{ install_base_checksum_algo }}"
+        remote_src: true
+        mode: "0644"
+      become: true
+      when:
+        - _install_src_stat.stat.exists
+        - offline_package_path != _install_pkg_local_file
+        - _install_src_checksum_stat.stat.exists | default(false)
+
+- name: 获取 —— 从 URL 下载离线包
+  when:
+    - offline_package_url | default('') | length > 0
+    - _effective_install_mode == 'offline'
+  block:
+    - name: 获取 —— 下载离线包
+      ansible.builtin.get_url:
+        url: "{{ offline_package_url }}"
+        dest: "{{ _install_pkg_local_file }}"
+        mode: "0644"
+        timeout: 120
+      become: true
+      register: _install_pkg_downloaded
+      retries: 3
+      delay: 5
+      until: _install_pkg_downloaded is succeeded
+
+- name: 获取 —— 确认离线包已就位
+  ansible.builtin.stat:
+    path: "{{ _install_pkg_local_file }}"
+  register: _install_pkg_final_stat
+  when: _effective_install_mode == 'offline'
+
+- name: 获取 —— 离线包仍缺失则失败
+  ansible.builtin.fail:
+    msg: >-
+      离线包最终未落到 {{ _install_pkg_local_file }}，安装中止。
+  when:
+    - _effective_install_mode == 'offline'
+    - not (_install_pkg_final_stat.stat.exists | default(false))

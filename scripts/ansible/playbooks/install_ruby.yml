@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# 安装 Ruby
+# =============================================================================
+# 用法：
+#   ansible-playbook playbooks/install_ruby.yml -i inventory/staging/hosts.yml
+#   指定版本：-e install_pkg_version=3.4
+#   源码编译：-e ruby_install_method=source
+#   强制重装：-e install_force=true
+# =============================================================================
+
+- name: 安装 Ruby
+  hosts: sandbox
+  gather_facts: true
+
+  vars:
+    install_mode: online
+    install_pkg_version: "3.4"
+    ruby_install_method: apt
+    ruby_enforce_version: false
+
+  roles:
+    - role: install_ruby

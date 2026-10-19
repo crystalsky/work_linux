@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: install_<xxx>
+  author: work_linux
+  description: "<软件> 安装 role（在线 / 离线双模式，依赖 install_base 基座）"
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - <xxx>
+
+# 保持空数组：基座由 tasks/main.yml 显式 import_role 引入。
+# 若在此列出 install_base，会在本 role 之前先跑一遍基座，导致重复执行。
+dependencies: []

@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: install_homebrew
+  author: work_linux
+  description: 通过 install_base 双模式安装 Homebrew（Linuxbrew）
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - homebrew
+    - linuxbrew
+    - install
+
+# install_base 提供共享任务片段与变量契约；
+# 注意：install_base 不在此作为依赖，而是由本 role 的 main.yml 直接 include，
+# 避免被依赖时重复执行初始化流程。
+dependencies: []

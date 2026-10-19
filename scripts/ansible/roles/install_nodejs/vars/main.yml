@@ -1,0 +1,42 @@
+---
+# =============================================================================
+# install_nodejs —— 计算后的内部变量
+# =============================================================================
+
+# 探测命令：node 由 nvm 管理，直接按版本目录取二进制，避免依赖 PATH。
+# 目录名形如 v22.21.1，glob 取最大版本。
+#
+# 注意：detect.yml 只用 rc 判定是否已安装，因此
+#   「没找到 node」必须返回非 0，否则会被误判为 partial（缺状态标记）。
+#   早期的 xargs -r 写法在无输入时返回 0，导致全新环境被判成不完整安装。
+_install_probe_cmd: >-
+  bash -c 'N=$(ls -d {{ nvm_prefix }}/versions/node/v{{ nodejs_major_version }}.*/bin/node
+  2>/dev/null | sort -V | tail -1);
+  if [ -n "$N" ]; then "$N" --version 2>/dev/null; else exit 1; fi'
+
+# 回滚时清理：nvm 下的该大版本目录 + 生成的 wrapper + 全局配置
+_install_rollback_paths:
+  - "{{ nvm_prefix }}/versions/node"
+  - "{{ nodejs_bin_link_dir }}"
+
+# 打包路径：只带本 role 负责的那个大版本的 node 目录。
+# 注意：不能写成 {{ nvm_prefix }}/versions/node（父目录），
+# 否则会把 nvm 里所有的 node 版本一起打进同一个包 ——
+# 22 和 24 的离线包会变成内容完全相同的 182MB 双版本包。
+# 具体版本号在 online_install 末尾由 _nodejs_ver 记录（形如 v22.23.3）。
+_install_pack_sources:
+  - "{{ nvm_prefix }}/versions/node/{{ _nodejs_ver | default('v' ~ nodejs_major_version, true) }}"
+  # 随包携带的系统运行库 .deb（由 pack_runtime_debs.yml 收集）
+  - "{{ nodejs_runtime_deb_dir }}"
+
+_install_pack_exclude:
+  - "*/node_modules/*/test/*"
+  - "*/npm/*/node_modules/*/test/*"
+  - "*/include/node/*"
+  - "*/share/doc/*"
+  - "*/share/man/*"
+  - "*/CHANGELOG.md"
+
+# 解压后 node 二进制所在的候选相对路径
+_nodejs_pack_prefix_candidates:
+  - "{{ nvm_prefix }}/versions/node"

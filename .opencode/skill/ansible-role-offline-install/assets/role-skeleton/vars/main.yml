@@ -1,0 +1,29 @@
+---
+# ============================================================================
+# 本文件由 tasks/main.yml 里的 include_vars 在运行时求值
+# 不要把它改成 defaults —— vars 优先级高于 extra-vars，必须运行时求值才能让 -e 生效
+# ============================================================================
+
+# 探测「已安装版本」的命令，必须：
+#   - 只输出版本号（不要带软件名、不要带括号说明）
+#   - 未安装时输出为空（不要输出 "absent" 之类的字符串，会让版本比较崩）
+_install_probe_cmd: "<xxx> --version"
+
+# 安装失败时要回滚清理的路径
+#   apt 模式装的是系统包，没有独立目录 → 留空数组
+#   source 模式 → 就是安装前缀
+_install_rollback_paths: >-
+  {{ [xxx_prefix] if xxx_install_method == 'source' else [] }}
+
+# 打包离线包时收哪些路径（都必须是绝对路径）
+#   deb 形态 → 下载的 .deb 集合所在目录
+#   tree 形态 → 安装前缀
+_install_pack_sources: >-
+  {{ [xxx_deb_download_dir] if xxx_offline_format == 'deb'
+     else [xxx_prefix] }}
+
+# 打包时排除的模式（相对打包根）
+_install_pack_exclude:
+  - "*/.git/*"
+  - "*/build/*"
+  - "*/share/doc/*"

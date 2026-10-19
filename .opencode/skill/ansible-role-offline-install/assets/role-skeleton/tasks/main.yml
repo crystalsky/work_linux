@@ -1,0 +1,16 @@
+---
+# 顺序不可调整：见 SKILL.md「为什么必须先 include_vars」
+
+- name: 加载本 role 的 vars
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/main.yml"
+
+- name: 解析安装策略
+  ansible.builtin.import_tasks: "{{ role_path }}/tasks/resolve.yml"
+
+- name: 引入基座
+  ansible.builtin.import_role:
+    name: install_base
+
+- name: 执行基座编排
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/orchestrate.yml"

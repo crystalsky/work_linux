@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# install_nvm —— 入口
+# =============================================================================
+# 执行顺序说明：
+#   1. include_vars —— 先求值 vars/main.yml（其中的探测命令依赖 defaults）
+#   2. import_role  —— 载入 install_base（提供基座任务库）
+#   3. orchestrate  —— 走基座的 contract → detect → decide → run 流程
+#
+# 为什么 include_vars 必须在 import_role 之前：
+#   vars/main.yml 里引用了 defaults 定义的变量。若放在 import_role 之后，
+#   install_base 的 detect.yml 读到的 _install_probe_cmd 是未求值的原始模板。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 载入角色内部变量"
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/main.yml"
+
+- name: "[{{ install_pkg_name }}] 载入安装基座"
+  ansible.builtin.import_role:
+    name: install_base
+
+- name: "[{{ install_pkg_name }}] 执行基座编排"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/orchestrate.yml"

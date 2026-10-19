@@ -1,0 +1,194 @@
+---
+# =============================================================================
+# install_rust —— 在线安装（rustup）
+# =============================================================================
+
+- name: "前置检查 —— 必需命令是否存在"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['Debian', 'RedHat']
+    fail_msg: "当前发行版 {{ ansible_facts['os_family'] }} 未适配"
+    quiet: true
+
+# -----------------------------------------------------------------------------
+# 1. 安装 rustup 运行所需的基础包
+#    curl / ca-certificates 是 rustup-init 下载工具链的硬依赖；
+#    build-essential 是编译含 C 代码 crate（openssl-sys 等）的硬依赖
+# -----------------------------------------------------------------------------
+# 注意：不使用 ansible.builtin.apt —— 该模块需要目标机 Python 自带 python3-apt，
+# Ubuntu 20.04 的 3.8 太旧无法运行 Ansible 2.20，3.12 又没有 apt_pkg 绑定。
+# 统一走 install_base 的 apt_compat.yml（apt-get 命令行 + 幂等判定）。
+- name: "安装 —— rustup 依赖的基础包"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+  vars:
+    _apt_pkgs:
+      - curl
+      - ca-certificates
+      - build-essential
+      - pkg-config
+    _apt_state: present
+    _apt_update: true
+    _apt_cache_time: 3600
+
+# -----------------------------------------------------------------------------
+# 2. 准备目录：RUSTUP_HOME / CARGO_HOME 统一到 rust_prefix 下，便于整树打包
+# -----------------------------------------------------------------------------
+- name: "准备 —— 创建 rust 安装目录"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ rust_user }}"
+    group: "{{ rust_group }}"
+    mode: "0755"
+  loop:
+    - "{{ rust_prefix }}"
+    - "{{ rust_cargo_home }}"
+    - "{{ rust_rustup_home }}"
+
+# -----------------------------------------------------------------------------
+# 3. 下载 rustup-init
+# -----------------------------------------------------------------------------
+- name: "下载 —— rustup-init"
+  ansible.builtin.get_url:
+    url: "{{ _rustup_init_url }}"
+    dest: "{{ install_base_staging_dir }}/rustup-init"
+    mode: "0755"
+    force: false
+    timeout: 300
+  register: _rust_get
+  until: _rust_get is success
+  retries: 3
+  delay: 5
+
+- name: "下载 —— rustup-init 校验（提供 checksum 时）"
+  ansible.builtin.stat:
+    path: "{{ install_base_staging_dir }}/rustup-init"
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: _rust_rustup_init_stat
+
+- name: "校验 —— rustup-init 与期望 checksum 比对"
+  ansible.builtin.assert:
+    that:
+      - rustup_init_checksum | length == 0 or
+        _rust_rustup_init_stat.stat.checksum == rustup_init_checksum
+    fail_msg: >-
+      rustup-init 校验不一致：期望 {{ rustup_init_checksum }}，
+      实际 {{ _rust_rustup_init_stat.stat.checksum }}
+    quiet: true
+
+# -----------------------------------------------------------------------------
+# 4. 执行 rustup-init
+#    -y / --no-modify-path：不写 shell profile，由本 role 统一管理
+#    -t <toolchain>：直接安装目标工具链
+#    --profile：minimal 仅 rustc/cargo/rust-std，体积最小
+# -----------------------------------------------------------------------------
+- name: "安装 —— 执行 rustup-init 安装工具链"
+  ansible.builtin.command:
+    argv: >-
+      {{ [install_base_staging_dir ~ '/rustup-init', '-y', '--no-modify-path'] +
+         ['--default-toolchain', rust_toolchain] +
+         ['--profile', rust_profile] +
+         (['--default-host', rust_default_host] if rust_default_host | length > 0 else []) }}
+    creates: "{{ _rust_toolchain_marker }}"
+  become: true
+  become_user: "{{ rust_user }}"
+  environment:
+    RUSTUP_HOME: "{{ rust_rustup_home }}"
+    CARGO_HOME: "{{ rust_cargo_home }}"
+    RUSTUP_DIST_SERVER: "{{ rust_dist_server }}"
+    RUSTUP_UPDATE_ROOT: "{{ rust_dist_server }}/rustup"
+    RUSTUP_INIT_SKIP_PATH_CHECK: "yes"
+    HOME: "{{ ansible_env.HOME | default('/home/' ~ rust_user) }}"
+  register: _rust_init_result
+  changed_when: _rust_init_result.rc | default(0) == 0
+
+# -----------------------------------------------------------------------------
+# 5. 额外组件与 target
+# -----------------------------------------------------------------------------
+- name: "安装 —— 额外 components"
+  ansible.builtin.command:
+    argv: >-
+      {{ [rust_cargo_home ~ '/bin/rustup', 'component', 'add'] + rust_extra_components }}
+  become: true
+  become_user: "{{ rust_user }}"
+  environment:
+    RUSTUP_HOME: "{{ rust_rustup_home }}"
+    CARGO_HOME: "{{ rust_cargo_home }}"
+    RUSTUP_DIST_SERVER: "{{ rust_dist_server }}"
+  loop: "{{ rust_extra_components }}"
+  loop_control:
+    loop_var: _rust_component
+  changed_when: true
+
+- name: "安装 —— 额外 targets"
+  ansible.builtin.command:
+    argv: >-
+      {{ [rust_cargo_home ~ '/bin/rustup', 'target', 'add'] + rust_extra_targets }}
+  become: true
+  become_user: "{{ rust_user }}"
+  environment:
+    RUSTUP_HOME: "{{ rust_rustup_home }}"
+    CARGO_HOME: "{{ rust_cargo_home }}"
+    RUSTUP_DIST_SERVER: "{{ rust_dist_server }}"
+  loop: "{{ rust_extra_targets }}"
+  loop_control:
+    loop_var: _rust_target
+  changed_when: true
+
+# -----------------------------------------------------------------------------
+# 6. 暴露到 PATH：符号链接 + profile.d
+# -----------------------------------------------------------------------------
+# 为什么用 wrapper 而不是软链：
+#   rustup 是代理机制，必须知道 RUSTUP_HOME/CARGO_HOME 才能找到工具链。
+#   软链到 /usr/local/bin 后，一旦调用者没读 /etc/profile.d/rust.sh
+#   （例如 ssh 直接执行命令、systemd 服务、cron），就会报
+#   "rustup could not choose a version of cargo to run"。
+#   wrapper 把环境变量写死，任何调用方式都可用。
+- name: "配置 —— 创建 cargo / rustc 等命令的 wrapper"
+  ansible.builtin.template:
+    src: rust-wrapper.sh.j2
+    dest: "{{ rust_bin_link_dir }}/{{ item }}"
+    mode: "0755"
+    force: true
+  loop: "{{ rust_wrapper_commands }}"
+
+- name: "配置 —— 生成 /etc/profile.d/rust.sh"
+  ansible.builtin.template:
+    src: rust.sh.j2
+    dest: "{{ rust_profile_file }}"
+    mode: "0644"
+    force: false
+  when: rust_manage_profile | bool
+
+# -----------------------------------------------------------------------------
+# 7. 校验与版本记录
+# -----------------------------------------------------------------------------
+- name: "校验 —— 探测 cargo 版本"
+  ansible.builtin.command:
+    argv: ["{{ rust_cargo_home }}/bin/cargo", "--version"]
+  become: true
+  become_user: "{{ rust_user }}"
+  environment:
+    RUSTUP_HOME: "{{ rust_rustup_home }}"
+    CARGO_HOME: "{{ rust_cargo_home }}"
+  register: _rust_cargo_version_raw
+  changed_when: false
+  when: rust_verify | bool
+
+- name: "记录 —— 实际安装的版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ (_rust_cargo_version_raw.stdout | default('') |
+          regex_findall('[0-9]+[.][0-9]+[.][0-9]+') | first | default('unknown', true)) }}
+  when: rust_verify | bool
+
+- name: "校验 —— 版本是否达到目标"
+  ansible.builtin.debug:
+    msg: >-
+      ⚠️ 已安装版本可能低于目标：
+      探测输出 = {{ _rust_cargo_version_raw.stdout | default('N/A') }}，
+      目标 toolchain = {{ rust_toolchain }}
+  when:
+    - rust_enforce_version | bool
+    - install_pkg_version_actual | default('0.0.0') is version(rust_toolchain, '<')

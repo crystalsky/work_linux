@@ -1,0 +1,6 @@
+---
+# 生产环境通用变量
+ansible_connection: ssh
+ansible_ssh_common_args: >-
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null

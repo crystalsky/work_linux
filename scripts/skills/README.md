@@ -8,6 +8,9 @@
 scripts/skills/
 ├── README.md
 ├── download_anthropic_skills_deps.sh   # 下载 anthropics/skills 全部依赖（npm + Python wheel）
+├── install_agent_skills.sh             # 安装技能本体：anthropics/skills（目录）+ obra/superpowers（pi git 包）
+├── pack_pi_extensions_skills.sh        # 离线打包本机全部 Pi 扩展+技能为 tar.gz（展平+去重+MANIFEST）
+├── deploy_pi_extensions_skills.sh      # 离线部署扩展+技能到 user/project 作用域（接受 bundle 目录或 tar.gz）
 └── deps/
     ├── npm-core.json                   # 核心技能 npm 依赖清单（docx / pptx / mcp-builder / claude-api）
     ├── npm-full.json                   # 全量 npm 依赖清单（core + web-artifacts-builder 前端栈）
@@ -17,7 +20,12 @@ scripts/skills/
 ## 快速使用
 
 ```bash
-# 全部下载：npm(core) + Python wheel(3.11 与 3.12)
+# 安装技能本体：anthropics/skills 的 19 个技能 + obra/superpowers（含启动引导扩展）
+scripts/skills/install_agent_skills.sh              # 两者都装
+scripts/skills/install_agent_skills.sh --anthropic  # 只装 anthropics/skills
+scripts/skills/install_agent_skills.sh --dry-run    # 只看动作，不落盘
+
+# 全部下载依赖：npm(core) + Python wheel(3.11 与 3.12)
 scripts/skills/download_anthropic_skills_deps.sh
 
 # 只下 npm，且要 web-artifacts-builder 的前端栈
@@ -31,6 +39,16 @@ scripts/skills/download_anthropic_skills_deps.sh --dry-run
 
 # 额外产出独立 .tgz 与 npm 缓存（便于内网 npm ci --offline）
 scripts/skills/download_anthropic_skills_deps.sh --tarballs --with-cache
+
+# 离线打包本机全部 Pi 扩展 + 技能为一个 tar.gz
+scripts/skills/pack_pi_extensions_skills.sh            # 全量打包（产出 bundle + tar.gz）
+scripts/skills/pack_pi_extensions_skills.sh --dry-run  # 只看收集结果，不落盘
+scripts/skills/pack_pi_extensions_skills.sh --no-tarball  # 只生成 bundle 目录，不打 tar.gz
+
+# 离线部署（离线机执行）：接受 tar.gz 或 bundle 目录
+scripts/skills/deploy_pi_extensions_skills.sh <bundle目录|tar.gz>      # user 作用域
+scripts/skills/deploy_pi_extensions_skills.sh --scope project --force  # 项目级 + 覆盖
+scripts/skills/deploy_pi_extensions_skills.sh --dry-run                # 只看动作，不落盘
 ```
 
 ## 产物布局（默认根目录 `~/.work_linux_working/`）
@@ -99,3 +117,4 @@ python3.11 -m playwright install chromium
 
 - 工程内 AI 技能的放置标准：`docs/devops_ai_agent/20260930-project-ai-skills-placement-standard.md`
 - 本工具的使用与实测记录：`docs/devops_ai_agent/20261017-anthropic-skills-deps-offline-download.md`
+- 扩展/技能离线打包与部署：`docs/devops_ai_agent/20261018-pi-extensions-skills-offline-bundle-deploy.md`

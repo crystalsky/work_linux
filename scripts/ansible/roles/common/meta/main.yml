@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: common
+  author: work_linux
+  description: Debian 系主机基线收敛（时区、基础软件包）
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - system
+dependencies: []

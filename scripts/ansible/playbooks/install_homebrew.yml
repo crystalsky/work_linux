@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# 在线安装 Homebrew
+# =============================================================================
+# 用法：
+#   ansible-playbook playbooks/install_homebrew.yml -i inventory/staging/hosts.yml
+#   ansible-playbook playbooks/install_homebrew.yml -i inventory/staging/hosts.yml \
+#     -e install_force=true
+#
+# 幂等：已安装且状态标记完整时零操作。
+# =============================================================================
+
+- name: 安装 Homebrew（在线模式）
+  hosts: sandbox
+  gather_facts: true
+
+  vars:
+    install_mode: online
+    install_pkg_version: "4.5.4"
+    brew_user: "{{ ansible_user }}"
+    brew_enforce_ruby_version: false
+
+  roles:
+    - role: install_homebrew

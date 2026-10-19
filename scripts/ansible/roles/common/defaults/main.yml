@@ -1,0 +1,5 @@
+---
+# common 角色默认变量（优先级最低，可被 group_vars / host_vars 覆盖）
+common_timezone: "{{ sandbox_timezone | default('Asia/Shanghai') }}"
+common_base_packages: "{{ sandbox_base_packages | default([]) }}"
+common_manage_timezone: true

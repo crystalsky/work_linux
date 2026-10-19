@@ -1,0 +1,104 @@
+---
+# =============================================================================
+# install_rust —— 收集系统编译依赖 .deb（离线包补充件）
+# =============================================================================
+# 为什么需要：
+#   rustup 装出来的 rustc/cargo 自带完整工具链，但 `cargo build` 的最后一步
+#   要把目标文件链接成可执行文件，需要系统链接器 cc/gcc。
+#   该链接器由 build-essential 提供，属于系统包，不在 rust_prefix 目录里，
+#   全新容器里离线安装后会报：
+#     error: linker `cc` not found
+#
+# 做法：
+#   把 rust_build_packages（默认 build-essential）连同其依赖闭包用
+#   apt-get download 落到 rust_build_deb_dir，随离线包一起分发；
+#   离线安装时用 dpkg -i 补装。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 构建依赖 —— 创建下载目录"
+  ansible.builtin.file:
+    path: "{{ rust_build_deb_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: "[{{ install_pkg_name }}] 构建依赖 —— 确保依赖包已安装"
+  ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+  vars:
+    _apt_pkgs: "{{ rust_build_packages }}"
+    _apt_state: present
+    _apt_update: true
+    _apt_cache_time: 3600
+
+# apt-get download 只下载指定的包本身，不递归展开依赖；
+# 这里用 apt-get install --print-uris 先算出完整依赖闭包（含已装的），
+# 再逐个下载，保证目标机 dpkg -i 时不会因缺依赖而失败。
+- name: "[{{ install_pkg_name }}] 构建依赖 —— 生成下载脚本"
+  ansible.builtin.copy:
+    dest: "{{ install_base_staging_dir }}/rust-pack-build-debs.sh"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      set -u
+      DEST="$1"
+      shift
+      PKGS="$*"
+      cd "$DEST" || exit 1
+
+      # 1) 算出完整依赖闭包。
+      #    不能用 apt-get install --print-uris：包已安装时它只说
+      #    "already the newest version" 不给 URI；加 --reinstall 也只列
+      #    该包本身（例如 build-essential 只是依赖声明包，4320B，不含 gcc）。
+      #    正确做法是用 apt-cache depends --recurse 递归展开依赖树。
+      CAND="$(apt-cache depends --recurse --no-recommends --no-suggests \
+                --no-conflicts --no-breaks --no-replaces --no-enhances \
+                $PKGS 2>/dev/null \
+              | grep -oE '^[a-z0-9][a-z0-9.+-]*(:[a-z0-9]+)?$' \
+              | sed 's/:.*//' | sort -u || true)"
+
+      # 2) 只保留仓库里真实存在的包（过滤虚拟包/已废弃包）
+      CLOSURE=""
+      for p in $CAND; do
+        if apt-cache show "$p" >/dev/null 2>&1; then
+          CLOSURE="$CLOSURE $p"
+        fi
+      done
+      CLOSURE="$(echo $CLOSURE | tr ' ' '\n' | sed '/^$/d' | sort -u)"
+
+      # 3) 依赖树解析失败时退化为只下载指定包
+      if [ -z "$CLOSURE" ]; then
+        CLOSURE="$PKGS"
+      fi
+
+      echo "closure=$(echo $CLOSURE | tr '\n' ' ')"
+
+      # 4) 逐个下载；已存在于目录的跳过
+      for p in $CLOSURE; do
+        if ls "${p}"_*.deb >/dev/null 2>&1; then
+          continue
+        fi
+        apt-get download "$p" >/dev/null 2>&1 || \
+          echo "warn: failed to download $p"
+      done
+
+      echo "downloaded=$(ls -1 ./*.deb 2>/dev/null | wc -l)"
+
+- name: "[{{ install_pkg_name }}] 构建依赖 —— 下载 .deb 及依赖闭包"
+  ansible.builtin.command:
+    argv: >-
+      {{ [install_base_staging_dir ~ '/rust-pack-build-debs.sh',
+          rust_build_deb_dir] + rust_build_packages }}
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: _rust_build_dl
+  changed_when: true
+  failed_when: false
+  retries: 2
+  delay: 5
+
+- name: "[{{ install_pkg_name }}] 构建依赖 —— 输出下载结果"
+  ansible.builtin.debug:
+    msg: >-
+      依赖闭包 {{ (_rust_build_dl.stdout | default('')
+        | regex_findall('closure=([^\n]*)') | first | default('', true)) }}
+      ｜ 已下载 {{ (_rust_build_dl.stdout | default('')
+        | regex_findall('downloaded=([0-9]+)') | first | default('0', true)) }} 个 .deb

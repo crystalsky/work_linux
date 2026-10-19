@@ -1,0 +1,143 @@
+---
+# =============================================================================
+# 钩子：离线产物落地
+# =============================================================================
+# 由基座 offline_install.yml 在解压完成后调用。
+# 此时产物已解压到 {{ _install_pkg_workdir }}。
+#
+# 需自适应两种形态：
+#   deb  形态 -> 包里是一堆 .deb，用 dpkg -i 装
+#   tree 形态 -> 包里是安装目录树，mv 到目标前缀 + 建软链
+#   （来源前缀可在 defaults 用 xxx_offline_format 固定，也可像这里一样探测）
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] offline —— 探测产物形态"
+  ansible.builtin.shell: |
+    set -u
+    deb=$(find "{{ _install_pkg_workdir }}" -maxdepth 4 -name '*.deb' | wc -l)
+    tree=$(find "{{ _install_pkg_workdir }}" -maxdepth 5 -name '<xxx>' -path '*/bin/*' | wc -l)
+    echo "deb_count=${deb}"
+    echo "tree_count=${tree}"
+  args:
+    executable: /bin/bash
+  register: _xxx_offline_probe
+  changed_when: false
+
+- name: "[{{ install_pkg_name }}] offline —— 记录产物形态计数"
+  ansible.builtin.set_fact:
+    _xxx_offline_deb_count: >-
+      {{ _xxx_offline_probe.stdout | regex_findall('deb_count=(\d+)') | first | default('0', true) }}
+    _xxx_offline_tree_count: >-
+      {{ _xxx_offline_probe.stdout | regex_findall('tree_count=(\d+)') | first | default('0', true) }}
+
+- name: "[{{ install_pkg_name }}] offline —— 产物为空则中止"
+  ansible.builtin.fail:
+    msg: >-
+      离线包内既没有 .deb 也没有可识别的安装目录树，
+      请检查打包时的 _install_pack_sources（当前：{{ _install_pack_sources }}）
+  when:
+    - _xxx_offline_deb_count | int == 0
+    - _xxx_offline_tree_count | int == 0
+
+# ---- deb 形态 -------------------------------------------------------------
+
+- name: "[{{ install_pkg_name }}] offline —— 安装 .deb 集合"
+  when: _xxx_offline_deb_count | int > 0
+  block:
+    - name: "[{{ install_pkg_name }}] offline —— 等待 dpkg 锁释放"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+    - name: "[{{ install_pkg_name }}] offline —— dpkg 安装"
+      ansible.builtin.shell: |
+        set -uo pipefail
+        cd "{{ _install_pkg_workdir }}"
+        find . -maxdepth 4 -name '*.deb' -print0 \
+          | sort -z \
+          | xargs -0 -r dpkg -i --force-confdef --force-confold
+        rc=$?
+        dpkg --configure -a || true
+        exit ${rc}
+      args:
+        executable: /bin/bash
+      register: _xxx_offline_dpkg
+      changed_when: true
+      failed_when: false
+
+    - name: "[{{ install_pkg_name }}] offline —— dpkg 失败则中止"
+      ansible.builtin.fail:
+        msg:
+          - "dpkg 安装失败（rc={{ _xxx_offline_dpkg.rc }}）"
+          - "STDOUT:"
+          - "{{ _xxx_offline_dpkg.stdout_lines | default([]) }}"
+          - "STDERR:"
+          - "{{ _xxx_offline_dpkg.stderr_lines | default([]) }}"
+      when: _xxx_offline_dpkg.rc | int != 0
+
+# ---- tree 形态 ------------------------------------------------------------
+
+- name: "[{{ install_pkg_name }}] offline —— 落地目录树"
+  when:
+    - _xxx_offline_deb_count | int == 0
+    - _xxx_offline_tree_count | int > 0
+  block:
+    - name: "[{{ install_pkg_name }}] offline —— 定位解压后的安装前缀"
+      ansible.builtin.shell: |
+        set -u
+        p=$(find "{{ _install_pkg_workdir }}" -maxdepth 5 -name '<xxx>' -path '*/bin/*' \
+              | head -1 | sed 's#/bin/<xxx>$##')
+        echo "prefix=${p}"
+      args:
+        executable: /bin/bash
+      register: _xxx_offline_prefix_probe
+      changed_when: false
+
+    - name: "[{{ install_pkg_name }}] offline —— 记录源前缀"
+      ansible.builtin.set_fact:
+        _xxx_offline_src: >-
+          {{ _xxx_offline_prefix_probe.stdout
+             | regex_findall('prefix=(\S+)') | first | default('', true) }}
+
+    - name: "[{{ install_pkg_name }}] offline —— 源前缀定位失败则中止"
+      ansible.builtin.fail:
+        msg: "无法在解压目录中定位 bin/<xxx> 的上级目录"
+      when: _xxx_offline_src | length == 0
+
+    - name: "[{{ install_pkg_name }}] offline —— 移动到目标前缀"
+      ansible.builtin.shell: |
+        set -eu
+        rm -rf "{{ xxx_prefix }}"
+        mkdir -p "$(dirname "{{ xxx_prefix }}")"
+        mv "{{ _xxx_offline_src }}" "{{ xxx_prefix }}"
+        chmod -R u=rwX,go=rX "{{ xxx_prefix }}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: "[{{ install_pkg_name }}] offline —— 创建命令软链接"
+      ansible.builtin.file:
+        src: "{{ xxx_prefix }}/bin/{{ item }}"
+        dest: "{{ xxx_bin_link_dir }}/{{ item }}"
+        state: link
+        force: true
+      loop:
+        - "<xxx>"
+
+# ---- 收尾 ----------------------------------------------------------------
+
+- name: "[{{ install_pkg_name }}] offline —— 校验并记录实际版本"
+  ansible.builtin.shell: |
+    set -u
+    if command -v <xxx >/dev/null 2>&1; then
+      <xxx> --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1
+    fi
+  args:
+    executable: /bin/bash
+  register: _xxx_offline_final
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] offline —— 写入实际版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ _xxx_offline_final.stdout | trim
+         if _xxx_offline_final.stdout | trim | length > 0 else 'unknown' }}

@@ -1,0 +1,123 @@
+---
+# =============================================================================
+# install_nvm —— 离线安装（从离线包部署 nvm 目录树）
+# =============================================================================
+# 离线包结构（install_base 打包的是绝对路径去掉开头 / 后的样子）：
+#   nvm-0.40.8.tar.gz
+#   └── opt/nvm/
+#       ├── nvm.sh
+#       ├── nvm-exec
+#       ├── bash_completion
+#       ├── install.sh
+#       └── ...
+#
+# 兼容布局：
+#   absolute  <extract>/opt/nvm/nvm.sh      ← 默认产物
+#   flat      <extract>/nvm.sh              ← 手工整理的包
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 离线 —— 定位包内 nvm 目录"
+  ansible.builtin.shell: |
+    set -u
+    D="{{ _install_pkg_extract_dir }}"
+    if [ -f "$D/opt/nvm/nvm.sh" ]; then
+      echo "prefix=$D/opt/nvm"
+      echo "layout=absolute"
+      exit 0
+    fi
+    if [ -f "$D/nvm.sh" ]; then
+      echo "prefix=$D"
+      echo "layout=flat"
+      exit 0
+    fi
+    F="$(find "$D" -maxdepth 4 -name nvm.sh -type f 2>/dev/null | head -1)"
+    if [ -n "$F" ]; then
+      echo "prefix=$(dirname "$F")"
+      echo "layout=found"
+      exit 0
+    fi
+    echo "prefix="
+    echo "layout=none"
+  args:
+    executable: /bin/bash
+  register: _nvm_offline_layout
+  changed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 校验离线包内容"
+  ansible.builtin.assert:
+    that:
+      - "'layout=none' not in _nvm_offline_layout.stdout"
+    fail_msg: >-
+      离线包内未找到 nvm.sh，包可能不完整。
+      解压目录：{{ _install_pkg_extract_dir }}
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录包内路径"
+  ansible.builtin.set_fact:
+    _nvm_offline_root: >-
+      {{ (_nvm_offline_layout.stdout | regex_findall('prefix=([^\n]+)') | first
+          | default('', true)) }}
+
+- name: "[{{ install_pkg_name }}] 离线 —— 输出识别到的布局"
+  ansible.builtin.debug:
+    msg: >-
+      {{ (_nvm_offline_layout.stdout | regex_findall('layout=([^\n]+)') | first
+          | default('unknown', true)) }} ｜ 根目录 = {{ _nvm_offline_root }}
+
+- name: "[{{ install_pkg_name }}] 离线 —— 部署到 nvm_prefix"
+  ansible.builtin.shell: |
+    set -eu
+    SRC="{{ _nvm_offline_root }}"
+    DST="{{ nvm_prefix }}"
+    if [ -d "$DST" ]; then
+      rm -rf "$DST"
+    fi
+    mkdir -p "$(dirname "$DST")"
+    cp -a "$SRC" "$DST"
+    chmod -R u+rwX,go+rX "$DST"
+    echo "DEPLOYED_TO=$DST"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 生成 /etc/profile.d/nvm.sh"
+  ansible.builtin.template:
+    src: nvm.sh.j2
+    dest: "{{ nvm_profile_file }}"
+    mode: "0644"
+    force: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 校验 nvm 可调用"
+  ansible.builtin.shell: |
+    set -u
+    export NVM_DIR="{{ nvm_prefix }}"
+    . "{{ nvm_prefix }}/nvm.sh" >/dev/null 2>&1
+    nvm --version 2>&1 | head -1
+  args:
+    executable: /bin/bash
+  register: _nvm_offline_verify
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ install_pkg_name }}] 离线 —— 校验失败则中止（触发回滚）"
+  ansible.builtin.assert:
+    that:
+      - _nvm_offline_verify.rc | default(1) == 0
+      - _nvm_offline_verify.stdout | default('') | trim | length > 0
+    fail_msg: >-
+      nvm 离线部署后无法调用：
+      stdout={{ _nvm_offline_verify.stdout | default('') }} ｜
+      stderr={{ _nvm_offline_verify.stderr | default('') }}
+    quiet: true
+
+- name: "[{{ install_pkg_name }}] 离线 —— 记录实际版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ (_nvm_offline_verify.stdout | default('')
+          | regex_findall('[0-9]+[.][0-9]+[.][0-9]+') | first | default('unknown', true)) }}
+
+- name: "[{{ install_pkg_name }}] 离线 —— 输出结果"
+  ansible.builtin.debug:
+    msg: >-
+      ✅ nvm 离线安装完成：{{ install_pkg_version_actual }}
+      ｜ 位置 {{ nvm_prefix }}

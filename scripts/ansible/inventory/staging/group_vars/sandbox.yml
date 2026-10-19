@@ -1,0 +1,17 @@
+---
+# sandbox 组变量
+sandbox_timezone: Asia/Shanghai
+sandbox_base_packages:
+  - curl
+  - ca-certificates
+  - git
+  - jq
+  - vim-tiny
+  - less
+  - procps
+  - net-tools
+  - iproute2
+  - iputils-ping
+  - dnsutils
+  - unzip
+  - xz-utils

@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# 回滚 —— 离线安装失败时恢复到快照点
+# =============================================================================
+# 回滚策略：
+#   1. 删除本次安装新增的路径（快照时不存在、现在存在的）
+#   2. 从快照恢复被覆盖的路径
+#   3. 清理暂存目录与状态标记（避免留下"装好了"的假象）
+#
+# 回滚本身失败不再抛错，只打警告 —— 避免掩盖原始安装错误。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 回滚 —— 开始"
+  ansible.builtin.debug:
+    msg: "🔄 开始回滚 {{ install_pkg_name }} 到安装前状态（快照：{{ _install_snapshot_dir | default('无') }}）"
+  tags: [install_base]
+
+# ---------- 步骤 1：删除本次新增的路径 ----------
+- name: "[{{ install_pkg_name }}] 回滚 —— 清理本次新增的目录"
+  ansible.builtin.file:
+    path: "{{ item.item }}"
+    state: absent
+  loop: "{{ _install_rollback_stat.results | default([]) }}"
+  when: not item.stat.exists
+  become: true
+  failed_when: false
+  tags: [install_base]
+
+# ---------- 步骤 2：从快照恢复被覆盖的路径 ----------
+- name: "[{{ install_pkg_name }}] 回滚 —— 查找可用快照文件"
+  ansible.builtin.find:
+    paths: "{{ _install_snapshot_dir }}"
+    patterns: "*.tar.gz"
+  register: _install_snapshot_files
+  become: true
+  failed_when: false
+  when: _install_snapshot_dir is defined
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 回滚 —— 从快照恢复"
+  ansible.builtin.unarchive:
+    src: "{{ item.path }}"
+    dest: /
+    remote_src: true
+    extra_opts:
+      - --overwrite
+  loop: "{{ _install_snapshot_files.files | default([]) }}"
+  become: true
+  failed_when: false
+  tags: [install_base]
+
+# ---------- 步骤 3：清理残留 ----------
+- name: "[{{ install_pkg_name }}] 回滚 —— 删除状态标记（防止伪装成已安装）"
+  ansible.builtin.file:
+    path: "{{ _install_pkg_state_file }}"
+    state: absent
+  become: true
+  failed_when: false
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 回滚 —— 清理解压暂存目录"
+  ansible.builtin.file:
+    path: "{{ _install_pkg_workdir }}"
+    state: absent
+  become: true
+  failed_when: false
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 回滚 —— 完成"
+  ansible.builtin.debug:
+    msg:
+      - "✅ 已完成 {{ install_pkg_name }} 的回滚"
+      - "    快照保留在：{{ _install_snapshot_dir | default('无') }}（供人工核查）"
+  tags: [install_base]

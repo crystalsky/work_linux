@@ -1,0 +1,209 @@
+---
+# =============================================================================
+# install_rust —— 离线安装（解压 tar.gz 后还原目录树）
+# =============================================================================
+# 离线包实际结构（install_base 的 make_offline_package 打包的是绝对路径，
+# 去掉开头的 / 后原样保留）：
+#   rust-stable.tar.gz
+#   └── opt/rust/
+#       ├── cargo/      <- 原 rust_cargo_home（含 bin/ 代理软链）
+#       └── rustup/     <- 原 rust_rustup_home（含 toolchains/ 真实工具链）
+#
+# 注意：兼容两种布局
+#   layout=nested  <workdir>/opt/rust/{cargo,rustup}   ← 当前实际产物
+#   layout=flat    <workdir>/{cargo,rustup}            ← 手工整理的包
+# =============================================================================
+
+- name: "离线 —— 定位解压后的 rust 目录"
+  ansible.builtin.shell: |
+    set -u
+    W="{{ _install_pkg_workdir }}"
+    # 布局 1：带绝对路径前缀（install_base 默认产物）
+    if [ -x "$W/opt/rust/cargo/bin/rustup" ]; then
+      echo "prefix=$W/opt/rust"
+      echo "layout=absolute"
+      exit 0
+    fi
+    # 布局 2：扁平 cargo/ rustup/
+    if [ -x "$W/cargo/bin/rustup" ]; then
+      echo "prefix=$W"
+      echo "layout=flat"
+      exit 0
+    fi
+    # 兜底：任意位置的 bin/rustup
+    U="$(find "$W" -maxdepth 6 -type f -path '*/cargo/bin/rustup' 2>/dev/null | head -1)"
+    if [ -n "$U" ]; then
+      echo "prefix=$(dirname "$(dirname "$(dirname "$U")")")"
+      echo "layout=found"
+      exit 0
+    fi
+    echo "prefix="
+    echo "layout=none"
+  args:
+    executable: /bin/bash
+  register: _rust_offline_layout
+  changed_when: false
+
+- name: "离线 —— 校验离线包内容"
+  ansible.builtin.assert:
+    that:
+      - "'layout=none' not in _rust_offline_layout.stdout"
+    fail_msg: >-
+      离线包内未找到 cargo/bin/rustup（rustup 代理），包可能不完整。
+      解压目录：{{ _install_pkg_workdir }}
+    quiet: true
+
+- name: "离线 —— 解析出离线包内的 rust 根目录"
+  ansible.builtin.set_fact:
+    _rust_offline_root: >-
+      {{ (_rust_offline_layout.stdout | regex_findall('prefix=([^\n]+)') | first
+          | default('', true)) }}
+
+- name: "离线 —— 输出识别到的布局"
+  ansible.builtin.debug:
+    msg: >-
+      {{ (_rust_offline_layout.stdout | regex_findall('layout=([^\n]+)') | first
+          | default('unknown', true)) }} ｜ 根目录 = {{ _rust_offline_root }}
+
+- name: "离线 —— 清空旧前缀（避免残留混装）"
+  ansible.builtin.file:
+    path: "{{ rust_prefix }}"
+    state: absent
+
+- name: "离线 —— 创建安装目录"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ rust_user }}"
+    group: "{{ rust_group }}"
+    mode: "0755"
+  loop:
+    - "{{ rust_prefix }}"
+    - "{{ rust_cargo_home }}"
+    - "{{ rust_rustup_home }}"
+
+- name: "离线 —— 搬运 cargo 与 rustup 目录"
+  ansible.builtin.shell: |
+    set -eu
+    SRC="{{ _rust_offline_root }}"
+    cp -a "$SRC/cargo/." "{{ rust_cargo_home }}/"
+    cp -a "$SRC/rustup/." "{{ rust_rustup_home }}/"
+    echo "restored: $SRC -> {{ rust_prefix }}"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: "离线 —— 清理下载缓存（rustup/downloads 无用）"
+  ansible.builtin.file:
+    path: "{{ rust_rustup_home }}/downloads"
+    state: absent
+
+- name: "离线 —— 修正属主"
+  ansible.builtin.file:
+    path: "{{ rust_prefix }}"
+    state: directory
+    owner: "{{ rust_user }}"
+    group: "{{ rust_group }}"
+    recurse: true
+
+- name: "离线 —— 创建命令 wrapper（自带 RUSTUP_HOME/CARGO_HOME）"
+  ansible.builtin.template:
+    src: rust-wrapper.sh.j2
+    dest: "{{ rust_bin_link_dir }}/{{ item }}"
+    mode: "0755"
+    force: true
+  loop: "{{ rust_wrapper_commands }}"
+
+- name: "离线 —— 生成 /etc/profile.d/rust.sh"
+  ansible.builtin.template:
+    src: rust.sh.j2
+    dest: "{{ rust_profile_file }}"
+    mode: "0644"
+    force: false
+  when: rust_manage_profile | bool
+
+- name: "离线 —— 校验 cargo 可运行"
+  ansible.builtin.command:
+    argv: ["{{ rust_cargo_home }}/bin/cargo", "--version"]
+  become: true
+  become_user: "{{ rust_user }}"
+  environment:
+    RUSTUP_HOME: "{{ rust_rustup_home }}"
+    CARGO_HOME: "{{ rust_cargo_home }}"
+  register: _rust_offline_verify
+  changed_when: false
+  failed_when: false
+
+- name: "离线 —— 版本校验失败则中止（触发回滚）"
+  ansible.builtin.assert:
+    that:
+      - _rust_offline_verify.rc | default(1) == 0
+    fail_msg: >-
+      离线安装后 cargo 无法运行：
+      stdout={{ _rust_offline_verify.stdout | default('') }} ｜
+      stderr={{ _rust_offline_verify.stderr | default('') }}
+    quiet: true
+
+- name: "离线 —— 记录实际版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ (_rust_offline_verify.stdout | default('') |
+          regex_findall('[0-9]+[.][0-9]+[.][0-9]+') | first | default('unknown', true)) }}
+
+# 离线包若附带系统编译依赖 .deb（build-essential 等），
+# 在这里补装，让 cargo build 能拿到链接器 cc/gcc。
+- name: "离线 —— 安装随包附带的构建依赖 .deb"
+  ansible.builtin.shell: |
+    set -u
+    D="{{ _install_pkg_extract_dir }}"
+    N="$(find "$D" -maxdepth 4 -name '*.deb' -type f 2>/dev/null | wc -l)"
+    echo "deb_count=$N"
+    if [ "$N" -eq 0 ]; then
+      exit 0
+    fi
+    find "$D" -maxdepth 4 -name '*.deb' -type f -print0 2>/dev/null \
+      | sort -z | xargs -0 -r dpkg -i --force-confdef --force-confold 2>&1 | tail -8
+    dpkg --configure -a 2>&1 | tail -3 || true
+  args:
+    executable: /bin/bash
+  register: _rust_offline_build_debs
+  changed_when: "'deb_count=0' not in _rust_offline_build_debs.stdout"
+  failed_when: false
+
+- name: "离线 —— 输出构建依赖补装结果"
+  ansible.builtin.debug:
+    msg: >-
+      {{ '离线包未附带构建依赖 .deb，跳过补装'
+         if 'deb_count=0' in _rust_offline_build_debs.stdout | default('')
+         else '已补装 '
+              ~ (_rust_offline_build_debs.stdout | default('')
+                 | regex_findall('deb_count=([0-9]+)') | first | default('0', true))
+              ~ ' 个构建依赖包' }}
+
+# 若离线包没带构建依赖且目标机也没有链接器，
+# 这里显式告警，避免用户编译时才遇到
+# "linker `cc` not found" 而不知所以。
+- name: "离线 —— 检查系统链接器 cc 是否可用"
+  ansible.builtin.shell: |
+    set -u
+    if command -v cc >/dev/null 2>&1; then
+      echo "cc=$(command -v cc)"
+    elif command -v gcc >/dev/null 2>&1; then
+      echo "cc=$(command -v gcc)"
+    else
+      echo "cc="
+    fi
+  args:
+    executable: /bin/bash
+  register: _rust_offline_cc
+  changed_when: false
+
+- name: "离线 —— 缺少链接器时告警（编译会失败）"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  未找到系统链接器 cc/gcc，rustc 可以运行但无法编译可执行文件。"
+      - "    现象：cargo build 报 error: linker `cc` not found"
+      - "    补救：先在目标机准备 build-essential，或在打包前就把它装进目标机。"
+      - "    排查：command -v cc"
+  when: "'cc=' == _rust_offline_cc.stdout | trim
+         or _rust_offline_cc.stdout | trim == 'cc='"

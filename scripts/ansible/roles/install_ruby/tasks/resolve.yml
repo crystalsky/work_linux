@@ -1,0 +1,48 @@
+---
+# =============================================================================
+# install_ruby —— 解析最终安装策略
+# =============================================================================
+# ruby_install_method=auto 时，探测发行版仓库能给出的 ruby 版本：
+#   仓库版本 >= install_pkg_version  -> apt（快）
+#   仓库版本 <  install_pkg_version  -> source（版本可控）
+#
+# 结果写入 _ruby_effective_method，后续所有判断只认它。
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 解析 —— 探测发行版仓库 ruby 候选版本"
+  ansible.builtin.shell: |
+    set -u
+    ver="$(apt-cache policy ruby 2>/dev/null | awk '/Candidate:/ {print $2; exit}')"
+    ver="${ver#*:}"                       # 去掉 epoch 前缀，如 1:3.3+b1 -> 3.3+b1
+    echo "$ver" | grep -oE '^[0-9]+(\.[0-9]+)*' || echo "0"
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _ruby_repo_probe
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: "[{{ install_pkg_name }}] 解析 —— 归一化仓库版本"
+  ansible.builtin.set_fact:
+    _ruby_repo_version: "{{ _ruby_repo_probe.stdout | trim | default('0', true) }}"
+
+- name: "[{{ install_pkg_name }}] 解析 —— 选择安装方式"
+  ansible.builtin.set_fact:
+    _ruby_effective_method: >-
+      {%- if ruby_install_method == 'auto' -%}
+      {%- if _ruby_repo_version is version(install_pkg_version, '>=') -%}
+      apt
+      {%- else -%}
+      source
+      {%- endif -%}
+      {%- else -%}
+      {{ ruby_install_method }}
+      {%- endif -%}
+
+- name: "[{{ install_pkg_name }}] 解析 —— 输出策略判定"
+  ansible.builtin.debug:
+    msg:
+      - "安装方式设置：{{ ruby_install_method }} → 实际执行：{{ _ruby_effective_method }}"
+      - "仓库候选版本：{{ _ruby_repo_version }} / 目标版本：{{ install_pkg_version }}"
+      - "离线包形态：{{ ruby_offline_format }}（deb = .deb 集合，tree = 目录树）"

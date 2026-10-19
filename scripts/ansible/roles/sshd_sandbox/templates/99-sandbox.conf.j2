@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+# 由 Ansible 角色 sshd_sandbox 管理，请勿手工修改
+Port {{ sshd_sandbox_port }}
+PermitRootLogin {{ sshd_sandbox_permit_root_login }}
+PasswordAuthentication {{ sshd_sandbox_password_authentication }}
+KbdInteractiveAuthentication no
+UsePAM yes
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server

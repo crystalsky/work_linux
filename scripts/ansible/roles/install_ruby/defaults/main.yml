@@ -1,0 +1,130 @@
+---
+# =============================================================================
+# install_ruby —— 变量契约
+# =============================================================================
+# 双模式安装 Ruby：
+#   online  —— 通过 apt（发行版仓库）或源码编译
+#   offline —— 从离线包部署
+#
+# 离线包有两种形态，由 ruby_offline_format 决定：
+#   deb  —— 用 apt 下载 .deb 及其依赖，离线用 dpkg 安装（推荐，apt 模式）
+#   tree —— 打包 ruby_prefix 目录树，离线 mv 回去（仅 source 模式）
+#
+# 通用开关（install_mode / install_force / install_base_* 等）
+# 由 install_base 的 defaults 提供，本文件只放 ruby 专属变量。
+# =============================================================================
+
+# ---------- install_base 契约（必需） ----------
+install_pkg_name: ruby
+install_pkg_version: "3.4"
+
+# ---------- 安装策略 ----------
+# apt     —— 使用发行版仓库的 ruby（Debian 13 trixie 提供 3.3.8）
+# source  —— 从 ruby-lang.org 下载源码编译安装到 ruby_prefix
+# auto    —— 发行版仓库版本满足目标则用 apt，否则自动切 source
+ruby_install_method: apt
+
+# 源码编译安装位置（ruby_install_method=source 时生效）
+ruby_prefix: /opt/ruby
+
+# 源码模式编译参数（附加在 ./configure 之后）
+ruby_configure_opts:
+  - --disable-install-doc
+
+# 源码编译并发数：留空则用 nproc
+ruby_make_jobs: ""
+
+# 符号链接目录：把 ruby / gem 等命令暴露到 PATH
+ruby_bin_link_dir: /usr/local/bin
+
+# ---------- 在线模式：apt ----------
+ruby_apt_packages:
+  - ruby
+  - ruby-dev
+
+# source 模式额外需要的编译依赖（apt 模式只装 ruby_apt_packages）
+ruby_build_packages:
+  - build-essential
+  - zlib1g-dev
+  - libssl-dev
+  - libyaml-dev
+  - libffi-dev
+  - libreadline-dev
+  - libgdbm-dev
+  - libncurses-dev
+  - libgmp-dev
+  - pkg-config
+  - autoconf
+  - bison
+
+# source 编译出的扩展模块在**运行时**仍需要对应的动态库（.so）。
+# -dev 包只提供头文件与 .so 软链，真正被 dlopen 的是运行库包，
+# 两者在全新容器里不一定同时存在。
+# 典型症状：require "yaml" 报
+#   libyaml-0.so.2: cannot open shared object file
+# 因此这里显式声明运行库，在线模式随编译依赖一起装，离线打包时也带上。
+#
+# 注意：运行库包名跨发行版不同（如 Debian 13 是 libssl3，Ubuntu 20.04 是
+# libssl1.1）。因此默认值只列「兼容面广、不随版本变化」的几个，
+# 其余由 offline_apply.yml 用 ldd + dpkg -S 自动反查补齐。
+ruby_runtime_packages:
+  - libyaml-0-2
+  - zlib1g
+  - libgmp10
+
+# ---------- 在线模式：源码编译 ----------
+ruby_source_mirror: "https://cache.ruby-lang.org/pub/ruby"
+ruby_source_checksum: ""
+
+# ruby-lang 只发布「两位版本 + 补丁位」的 tar.gz（如 3.4.11），
+# 不存在 ruby-3.4.tar.gz。因此当 install_pkg_version 是 3.4 这种两位形式时，
+# 需要在安装期去镜像目录解析出该分支的最新补丁版本。
+# 解析结果由 _ruby_source_version 承载（见 tasks/resolve_source.yml）。
+_ruby_source_major_minor: >-
+  {{ install_pkg_version.split('.')[0:2] | join('.') }}
+_ruby_source_tarball: "ruby-{{ _ruby_source_version }}.tar.gz"
+_ruby_source_effective_url: >-
+  {{ ruby_source_mirror }}/{{ _ruby_source_major_minor }}/{{ _ruby_source_tarball }}
+_ruby_source_build_dir: "{{ install_base_staging_dir }}/ruby-src"
+
+# ---------- 版本校验 ----------
+# apt 模式实际版本受发行版限制，是否因此中止安装
+ruby_enforce_version: false
+
+# ---------- 离线包来源 ----------
+offline_package_path: ""
+offline_package_url: ""
+offline_package_checksum: ""
+
+# ---------- 离线包形态 ----------
+# deb  —— apt 下载的 .deb 集合（apt 模式打包）
+# tree —— ruby_prefix 目录树（source 模式打包）
+ruby_offline_format: "deb"
+
+# ---------- apt 下载（打离线包用） ----------
+ruby_deb_download_dir: "{{ install_base_staging_dir }}/ruby-deb"
+ruby_deb_include_depends: true
+
+# tree 形态（source 编译）离线包是否额外附带运行库 .deb。
+# source 编译出的扩展模块（psych.so/openssl.so…）在运行时 dlopen 系统动态库，
+# 这些库不在 ruby_prefix 里，全新容器里可能缺失，
+# 典型症状：require "yaml" 报 libyaml-0.so.2: cannot open shared object file。
+ruby_offline_include_runtime_debs: true
+ruby_runtime_deb_dir: "{{ install_base_staging_dir }}/ruby-runtime-deb"
+ruby_apt_download_opts:
+  - --download-only
+  - --reinstall
+  - --no-install-recommends
+  - -o
+  - "Dpkg::Use-Pty=0"
+  - -o
+  - "Debug::NoLocking=1"
+
+# ---------- install_base 钩子 ----------
+# install_base 的 run.yml 通过这两个变量定位本 role 的任务片段
+_install_online_tasks: "{{ role_path }}/tasks/online_install.yml"
+# deb 形态需要先把 .deb 集合下载到 ruby_deb_download_dir 再打包
+_install_prepack_tasks: >-
+  {{ role_path ~ '/tasks/pack_debs.yml' if ruby_offline_format == 'deb'
+     else (role_path ~ '/tasks/pack_runtime_debs.yml'
+           if ruby_offline_include_runtime_debs | bool else '') }}

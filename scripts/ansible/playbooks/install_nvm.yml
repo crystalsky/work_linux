@@ -1,0 +1,20 @@
+---
+# nvm 本体安装
+#
+# 用法：
+#   uv run ansible-playbook playbooks/install_nvm.yml
+#   uv run ansible-playbook playbooks/install_nvm.yml -e install_mode=offline \
+#     -e offline_package_path=/workspace/nvm-0.40.8.tar.gz
+#   uv run ansible-playbook playbooks/install_nvm.yml -e make_offline_package=true
+#
+- name: 安装 nvm
+  hosts: ubuntu2004_sandbox
+  gather_facts: true
+  vars:
+    install_mode: online
+    install_pkg_version: "0.40.8"
+    nvm_prefix: /opt/nvm
+    # GitHub 直连不可达时走加速前缀
+    nvm_github_proxy: "https://ghfast.top/"
+  roles:
+    - install_nvm

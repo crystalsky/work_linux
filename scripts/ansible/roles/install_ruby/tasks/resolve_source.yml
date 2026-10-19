@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# install_ruby —— 解析源码包版本
+# =============================================================================
+# ruby-lang 镜像只发布「两位版本 + 补丁位」的 tar.gz，例如：
+#   https://cache.ruby-lang.org/pub/ruby/3.4/ruby-3.4.11.tar.gz
+# 不存在 ruby-3.4.tar.gz（直取会 404）。
+#
+# 所以：
+#   1. install_pkg_version 已是三段（如 3.4.11）-> 直接用它
+#   2. 只有两位（如 3.4）                       -> 抓镜像目录页，取该分支最大补丁版本
+#
+# 产出：_ruby_source_version（形如 3.4.11）
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] source —— 判断版本号是否已含补丁位"
+  ansible.builtin.set_fact:
+    _ruby_source_version_pinned: >-
+      {{ (install_pkg_version.split('.') | length) >= 3 }}
+
+- name: "[{{ install_pkg_name }}] source —— 版本已精确指定"
+  ansible.builtin.set_fact:
+    _ruby_source_version: "{{ install_pkg_version }}"
+  when: _ruby_source_version_pinned | bool
+
+- name: "[{{ install_pkg_name }}] source —— 从镜像目录解析最新补丁版本"
+  when: not (_ruby_source_version_pinned | bool)
+  block:
+    - name: "[{{ install_pkg_name }}] source —— 拉取 {{ _ruby_source_major_minor }} 目录列表"
+      ansible.builtin.uri:
+        url: "{{ ruby_source_mirror }}/{{ _ruby_source_major_minor }}/"
+        return_content: true
+        timeout: 60
+        status_code: [200]
+      register: _ruby_source_index
+      retries: 3
+      delay: 5
+      until: _ruby_source_index is succeeded
+
+    - name: "[{{ install_pkg_name }}] source —— 解析目录中的 tar.gz 版本"
+      ansible.builtin.set_fact:
+        _ruby_source_candidates: >-
+          {{ _ruby_source_index.content
+             | regex_findall('ruby-([0-9]+[.][0-9]+[.][0-9]+)[.]tar[.]gz')
+             | unique }}
+
+    # 不能直接字符串 sort：它把 3.4.11 排在 3.4.9 前面（'1' < '9'）。
+    # 也不能只把点换成空格再 sort，因为“3 4 10”仍是字符串比较，同样错。
+    # 做法：每个数字段补零到 4 位，使字符串序等价于数字序，再降序取首个。
+    - name: "[{{ install_pkg_name }}] source —— 按数字段排序后取最新补丁版本"
+      ansible.builtin.set_fact:
+        _ruby_source_version: >-
+          {{ (_ruby_source_candidates
+              | map('regex_replace', '([0-9]+)', '0000\1')
+              | map('regex_replace', '0+([0-9]{4})', '\1')
+              | zip(_ruby_source_candidates)
+              | sort(reverse=true)
+              | map(attribute=1)
+              | list
+              | first) | default('') }}
+
+    - name: "[{{ install_pkg_name }}] source —— 解析失败则中止"
+      ansible.builtin.fail:
+        msg: >-
+          无法从 {{ ruby_source_mirror }}/{{ _ruby_source_major_minor }}/ 解析出可用版本。
+          请直接指定完整版本：-e install_pkg_version=3.4.11
+      when: _ruby_source_version | length == 0
+
+- name: "[{{ install_pkg_name }}] source —— 源码包定位结果"
+  ansible.builtin.debug:
+    msg:
+      - "目标分支：{{ _ruby_source_major_minor }}"
+      - "选用版本：{{ _ruby_source_version }}"
+      - "源码包  ：{{ _ruby_source_effective_url }}"

@@ -1,0 +1,28 @@
+---
+# =============================================================================
+# install_ruby —— 入口
+# =============================================================================
+# 流程：
+#   1. include_vars 求值内部变量（在 defaults 合并完成后）
+#   2. 解析安装策略（ruby_install_method=auto 时探测仓库候选版本）
+#   3. import_role install_base —— 识别系统、建目录、换源
+#   4. 复用 install_base 的编排骨架（契约 → 探测 → 决策 → 执行）
+#   5. 执行阶段回落到本 role 的 online_install.yml / offline_apply.yml
+#
+# ⚠️ import_role 是静态导入，condition 会作用到其中每个任务；
+#    因此策略解析必须放在 import_role 之前，避免基座被整体跳过。
+# =============================================================================
+
+- name: "初始化 —— 求值 ruby 角色内部变量"
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/main.yml"
+
+- name: "初始化 —— 解析 ruby 安装策略"
+  ansible.builtin.import_tasks: "{{ role_path }}/tasks/resolve.yml"
+
+- name: "初始化基座 —— ruby 安装前置"
+  ansible.builtin.import_role:
+    name: install_base
+
+- name: "执行 —— ruby 安装编排"
+  ansible.builtin.import_tasks: "{{ install_base_tasks_dir }}/orchestrate.yml"

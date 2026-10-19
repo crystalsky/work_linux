@@ -1,0 +1,190 @@
+---
+# 钩子：在线安装。由基座 run.yml 通过 {{ _install_online_tasks }} 引入。
+# 约定：
+#   1. 开头探测已装版本，已达标且非 force 时不要重复安装
+#   2. 所有 apt/dpkg 操作前先 include {{ install_base_tasks_dir }}/wait_pkg_lock.yml
+#   3. 结尾必须 set_fact install_pkg_version_actual（写状态文件要用）
+
+- name: 未做策略解析时补跑
+  ansible.builtin.import_tasks: "{{ role_path }}/tasks/resolve.yml"
+  when: _xxx_effective_method is not defined
+
+# ---- 探测现状 -------------------------------------------------------------
+
+- name: 探测已安装版本
+  ansible.builtin.shell: |
+    set -u
+    if command -v <xxx> >/dev/null 2>&1; then
+      <xxx> --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1
+    fi
+  args:
+    executable: /bin/bash
+  register: _xxx_installed_probe
+  changed_when: false
+  failed_when: false
+
+- name: 记录已安装版本
+  ansible.builtin.set_fact:
+    _xxx_installed_present: "{{ _xxx_installed_probe.stdout | trim | length > 0 }}"
+    _xxx_installed_version: >-
+      {{ _xxx_installed_probe.stdout | trim if _xxx_installed_probe.stdout | trim | length > 0
+         else '0.0.0' }}
+
+- name: 输出当前状态
+  ansible.builtin.debug:
+    msg: >-
+      已安装：{{ '是，版本 ' ~ _xxx_installed_version
+                 if _xxx_installed_present | bool else '否' }}
+      目标版本：{{ install_pkg_version }}
+
+# ---- apt 分支 -------------------------------------------------------------
+
+- name: apt 方式安装 <软件>
+  when: _xxx_effective_method == 'apt'
+  block:
+    - name: 等待 dpkg 锁释放
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+    - name: 安装系统包
+      ansible.builtin.apt:
+        name: "{{ xxx_apt_packages }}"
+        state: present
+        update_cache: true
+        dpkg_options: "force-confdef,force-confold"
+        lock_timeout: "{{ install_base_apt_lock_timeout | default(120) }}"
+      register: _xxx_apt_result
+      retries: 3
+      delay: 10
+      until: _xxx_apt_result is succeeded
+
+# ---- source 分支 ----------------------------------------------------------
+
+- name: 源码编译安装 <软件>
+  when: _xxx_effective_method == 'source'
+  block:
+    - name: 等待 dpkg 锁释放
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/wait_pkg_lock.yml"
+
+    - name: 解析具体源码版本
+      ansible.builtin.import_tasks: "{{ role_path }}/tasks/resolve_source.yml"
+
+    - name: 安装编译依赖
+      ansible.builtin.apt:
+        name: "{{ (xxx_apt_packages + xxx_build_packages) | unique }}"
+        state: present
+        update_cache: true
+        lock_timeout: "{{ install_base_apt_lock_timeout | default(120) }}"
+
+    - name: 下载源码包
+      ansible.builtin.get_url:
+        url: "{{ _xxx_source_effective_url }}"
+        dest: "{{ _xxx_source_build_dir }}/{{ _xxx_source_tarball }}"
+        mode: "0644"
+        timeout: 60
+      retries: 3
+      delay: 10
+
+    - name: 清理上次构建目录
+      ansible.builtin.file:
+        path: "{{ _xxx_source_build_dir }}/src"
+        state: absent
+
+    - name: 创建构建目录
+      ansible.builtin.file:
+        path: "{{ _xxx_source_build_dir }}/src"
+        state: directory
+        mode: "0755"
+
+    - name: 解压源码包
+      ansible.builtin.unarchive:
+        src: "{{ _xxx_source_build_dir }}/{{ _xxx_source_tarball }}"
+        dest: "{{ _xxx_source_build_dir }}/src"
+        remote_src: true
+        extra_opts:
+          - "--no-same-owner"
+
+    - name: 定位源码根目录
+      ansible.builtin.set_fact:
+        _xxx_source_root: >-
+          {{ (_xxx_source_build_dir ~ '/src/' ~ _xxx_source_tarball | basename
+              | regex_replace('[.]tar[.]gz$', '')) }}
+
+    # 关键：先探测前缀里已有的版本。残留文件会让编译任务静默跳过，
+    # 所以不能用 creates:，也不该盲目信任目录存在。
+    - name: 探测安装前缀中的版本
+      ansible.builtin.shell: |
+        set -u
+        if [ -x "{{ xxx_prefix }}/bin/<xxx>" ]; then
+          "{{ xxx_prefix }}/bin/<xxx>" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1
+        fi
+      args:
+        executable: /bin/bash
+      register: _xxx_prefix_probe
+      changed_when: false
+      failed_when: false
+
+    - name: 前缀版本不符时清空
+      ansible.builtin.file:
+        path: "{{ xxx_prefix }}"
+        state: absent
+      when: >-
+        (_xxx_prefix_probe.stdout | trim) != _xxx_source_version
+
+    - name: 编译并安装
+      ansible.builtin.shell: |
+        set -eu
+        cd "{{ _xxx_source_root }}"
+        ./configure --prefix="{{ xxx_prefix }}" {{ xxx_configure_opts | default([]) | join(' ') }}
+        make -j"{{ xxx_make_jobs if xxx_make_jobs | length > 0 else '$(nproc)' }}"
+        make install
+      args:
+        executable: /bin/bash
+        chdir: "{{ _xxx_source_root }}"
+      async: 5400
+      poll: 30
+
+    - name: 创建命令软链接
+      ansible.builtin.file:
+        src: "{{ xxx_prefix }}/bin/{{ item }}"
+        dest: "{{ xxx_bin_link_dir }}/{{ item }}"
+        state: link
+        force: true
+      loop:
+        - "<xxx>"
+
+# ---- 收尾：记录实际版本 ---------------------------------------------------
+
+- name: 校验并记录实际安装版本
+  ansible.builtin.shell: |
+    set -u
+    if command -v <xxx> >/dev/null 2>&1; then
+      <xxx> --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1
+    fi
+  args:
+    executable: /bin/bash
+  register: _xxx_final_probe
+  changed_when: false
+  failed_when: false
+
+- name: 写入实际版本
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: >-
+      {{ _xxx_final_probe.stdout | trim if _xxx_final_probe.stdout | trim | length > 0
+         else 'unknown' }}
+
+- name: 版本低于目标时告警
+  ansible.builtin.debug:
+    msg:
+      - "⚠️ 已安装版本低于目标版本"
+      - "探测到的版本：{{ install_pkg_version_actual }}"
+      - "目标版本：{{ install_pkg_version }}"
+  when: install_pkg_version_actual is version(install_pkg_version, '<')
+
+- name: 强制版本达标
+  ansible.builtin.fail:
+    msg: >-
+      <软件> 已安装版本 {{ install_pkg_version_actual }}
+      低于目标 {{ install_pkg_version }}，且 xxx_enforce_version=true
+  when:
+    - xxx_enforce_version | bool
+    - install_pkg_version_actual is version(install_pkg_version, '<')

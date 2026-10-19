@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: install_ruby
+  author: work_linux
+  description: 通过 install_base 双模式安装 Ruby（在线 apt / 离线 tar.gz）
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - ruby
+    - install
+
+# install_base 由本 role 的 main.yml 直接 include，
+# 不在此声明为依赖，避免被依赖时重复执行初始化流程。
+dependencies: []

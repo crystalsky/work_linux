@@ -1,0 +1,20 @@
+---
+# =============================================================================
+# install_nodejs —— 打包前准备（prepack 钩子入口）
+# =============================================================================
+# 打包阶段走的是"目标已就绪"的 skip 路径，online_install.yml 不会执行，
+# 因此那里 set_fact 的 _nodejs_ver 在打包时并不存在。
+# 而 _install_pack_sources 依赖 _nodejs_ver 精确定位版本目录，
+# 所以这里必须先无条件地把版本号从文件系统探出来。
+#
+# 顺序：
+#   1. resolve_installed_version.yml —— 无条件，供 _install_pack_sources 使用
+#   2. pack_runtime_debs.yml         —— 可选，随包携带系统运行库 .deb
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 解析已安装的版本目录"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/resolve_installed_version.yml"
+
+- name: "[{{ install_pkg_name }}] 打包准备 —— 收集系统运行库"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/pack_runtime_debs.yml"
+  when: nodejs_offline_include_runtime_debs | bool

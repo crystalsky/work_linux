@@ -1,0 +1,57 @@
+---
+# =============================================================================
+# 安装前快照 —— 供安装失败时回滚
+# =============================================================================
+# 只备份「本次安装可能触碰的路径」，不做全盘备份。
+# role 通过 _install_rollback_paths 声明需要备份的路径（不存在则跳过）。
+#
+# 产出：_install_snapshot_dir（本次快照目录）
+# =============================================================================
+
+- name: "[{{ install_pkg_name }}] 快照 —— 生成本次快照目录"
+  ansible.builtin.set_fact:
+    _install_snapshot_dir: >-
+      {{ install_base_staging_dir }}/.snapshot/{{ install_pkg_name }}-{{ _install_snapshot_stamp }}
+  vars:
+    _install_snapshot_stamp: "{{ now(utc=true, fmt='%Y%m%d%H%M%S') }}"
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 快照 —— 创建快照目录"
+  ansible.builtin.file:
+    path: "{{ _install_snapshot_dir }}"
+    state: directory
+    mode: "0700"
+  become: true
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 快照 —— 记录待回滚路径存在性"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ _install_rollback_paths | default([]) }}"
+  register: _install_rollback_stat
+  become: true
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 快照 —— 备份已存在的路径"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    src="{{ item.item }}"
+    dest="{{ _install_snapshot_dir }}/{% raw %}$(echo "$src" | tr '/' '_'){% endraw %}"
+    tar -czf "${dest}.tar.gz" -C / "{% raw %}${src#/}{% endraw %}"
+    echo "${dest}.tar.gz"
+  args:
+    executable: /bin/bash
+    chdir: /
+  loop: "{{ _install_rollback_stat.results }}"
+  when: item.stat.exists
+  register: _install_snapshot_result
+  become: true
+  changed_when: false
+  tags: [install_base]
+
+- name: "[{{ install_pkg_name }}] 快照 —— 已建立回滚点"
+  ansible.builtin.debug:
+    msg:
+      - "回滚点：{{ _install_snapshot_dir }}"
+      - "备份路径数：{{ _install_snapshot_result.results | default([]) | length }}"
+  tags: [install_base]

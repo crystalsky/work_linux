@@ -1,0 +1,225 @@
+---
+# =============================================================================
+# install_ruby —— 在线安装
+# =============================================================================
+# 两种方式：
+#   apt    —— 装发行版仓库的 ruby + 编译依赖（快，版本受发行版限制）
+#   source —— 从 ruby-lang.org 下载源码编译到 ruby_prefix（可控版本，慢）
+#
+# 已安装且版本满足要求时零操作（原子化）。
+# =============================================================================
+
+# ---------- 探测现状 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 探测已安装 ruby 版本"
+  ansible.builtin.shell: |
+    set -u
+    if command -v ruby >/dev/null 2>&1; then
+      ruby -e 'print RUBY_VERSION' 2>/dev/null || echo ""
+    fi
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _ruby_probe
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: "[{{ install_pkg_name }}] 在线 —— 归一化已安装版本"
+  ansible.builtin.set_fact:
+    _ruby_installed: "{{ _ruby_probe.stdout | trim }}"
+    _ruby_installed_ok: >-
+      {{ ((_ruby_probe.stdout | trim | default('0.0.0', true))
+          is version(install_pkg_version, '>=')) }}
+
+- name: "[{{ install_pkg_name }}] 在线 —— 现状判定"
+  ansible.builtin.debug:
+    msg:
+      - "已安装 ruby：{{ _ruby_installed if (_ruby_installed | length > 0) else '未安装' }}"
+      - "目标版本：>= {{ install_pkg_version }}"
+      - "是否满足：{{ _ruby_installed_ok }}"
+
+# ---------- 已满足则直接结束（原子化） ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 已满足要求，跳过安装"
+  ansible.builtin.debug:
+    msg: "✅ ruby {{ _ruby_installed }} 已满足 >= {{ install_pkg_version }}，无需操作"
+  when:
+    - _ruby_installed_ok | bool
+    - not (install_force | default(false) | bool)
+
+# ---------- apt 方式 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 通过 apt 安装"
+  when:
+    - _ruby_effective_method == 'apt'
+    - not (_ruby_installed_ok | bool) or (install_force | default(false) | bool)
+  block:
+    # 不使用 ansible.builtin.apt：该模块需要目标机 Python 自带 python3-apt。
+    # Ubuntu 20.04 的系统 Python 3.8 无法运行 Ansible 2.20，而镜像里的
+    # Python 3.12 又没有 apt_pkg 绑定。统一走 apt_compat.yml（apt-get 命令行）。
+    - name: "[{{ install_pkg_name }}] apt —— 安装 ruby 及编译依赖"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+      vars:
+        _apt_pkgs: "{{ ruby_apt_packages }}"
+        _apt_state: present
+        _apt_update: true
+        _apt_cache_time: "{{ install_base_apt_cache_valid_time | default(3600) }}"
+
+# ---------- source 方式 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 通过源码编译安装"
+  when:
+    - _ruby_effective_method == 'source'
+    - not (_ruby_installed_ok | bool) or (install_force | default(false) | bool)
+  block:
+    - name: "[{{ install_pkg_name }}] source —— 解析源码包版本"
+      ansible.builtin.import_tasks: "{{ role_path }}/tasks/resolve_source.yml"
+
+    # 编译依赖 + 运行时动态库一起装：
+    # -dev 包给头文件，运行库包给 dlopen 时的 .so，
+    # 缺后者会导致 require "yaml" 报 libyaml-0.so.2 not found。
+    - name: "[{{ install_pkg_name }}] source —— 安装编译依赖与运行时库"
+      ansible.builtin.include_tasks: "{{ install_base_tasks_dir }}/apt_compat.yml"
+      vars:
+        _apt_pkgs: >-
+          {{ ruby_apt_packages + ruby_build_packages +
+             (ruby_runtime_packages | default([])) }}
+        _apt_state: present
+        _apt_update: true
+        _apt_cache_time: "{{ install_base_apt_cache_valid_time | default(3600) }}"
+
+    - name: "[{{ install_pkg_name }}] source —— 下载源码包"
+      ansible.builtin.get_url:
+        url: "{{ _ruby_source_effective_url }}"
+        dest: "{{ install_base_cache_dir }}/{{ _ruby_source_tarball }}"
+        mode: "0644"
+        timeout: 120
+        checksum: "{{ ruby_source_checksum if (ruby_source_checksum | length > 0) else omit }}"
+      become: true
+      register: _ruby_source_download
+      retries: 3
+      delay: 5
+      until: _ruby_source_download is succeeded
+
+    - name: "[{{ install_pkg_name }}] source —— 准备编译目录"
+      ansible.builtin.file:
+        path: "{{ _ruby_source_build_dir }}"
+        state: "{{ item }}"
+        mode: "0755"
+      loop: [absent, directory]
+      become: true
+
+    - name: "[{{ install_pkg_name }}] source —— 展开源码"
+      ansible.builtin.unarchive:
+        src: "{{ install_base_cache_dir }}/{{ _ruby_source_tarball }}"
+        dest: "{{ _ruby_source_build_dir }}"
+        remote_src: true
+        extra_opts: [--no-same-owner]
+      become: true
+      register: _ruby_source_extract
+
+    - name: "[{{ install_pkg_name }}] source —— 记录源码根目录"
+      ansible.builtin.set_fact:
+        _ruby_source_root: >-
+          {{ _ruby_source_build_dir }}/{{ _ruby_source_tarball | regex_replace('\.tar\.gz$', '') }}
+
+    - name: "[{{ install_pkg_name }}] source —— 检测前缀中的现有版本"
+      ansible.builtin.shell: |
+        set -u
+        if [ -x "{{ ruby_prefix }}/bin/ruby" ]; then
+          "{{ ruby_prefix }}/bin/ruby" -e 'print RUBY_VERSION' 2>/dev/null || echo "broken"
+        else
+          echo "absent"
+        fi
+      args:
+        executable: /bin/bash
+        chdir: /tmp
+      register: _ruby_prefix_probe
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: "[{{ install_pkg_name }}] source —— 记录前缀现有版本"
+      ansible.builtin.set_fact:
+        _ruby_prefix_version: "{{ _ruby_prefix_probe.stdout | trim | default('absent', true) }}"
+
+    # creates 只判断「文件是否存在」，换版本时会静默跳过编译，
+    # 导致装了新源码却仍跑旧二进制（3.4.11 源码 -> 3.4.9 结果）。
+    # 改为先比对版本，不符则清空前缀再编译。
+    - name: "[{{ install_pkg_name }}] source —— 版本不符时清空旧前缀"
+      ansible.builtin.file:
+        path: "{{ ruby_prefix }}"
+        state: absent
+      when: _ruby_prefix_version != _ruby_source_version
+      become: true
+
+    - name: "[{{ install_pkg_name }}] source —— 配置与编译安装"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ _ruby_source_root }}"
+        if [ -f Makefile ] && [ -f config.status ]; then
+          echo "检测到已配置，跳过 configure"
+        else
+          ./configure --prefix="{{ ruby_prefix }}" {{ ruby_configure_opts | join(' ') }}
+        fi
+        make -j"{{ ruby_make_jobs if (ruby_make_jobs | length > 0) else '$(nproc)' }}"
+        make install
+        echo "INSTALLED_TO={{ ruby_prefix }}"
+      args:
+        executable: /bin/bash
+        chdir: "{{ _ruby_source_root }}"
+      become: true
+      register: _ruby_source_build
+      async: 5400
+      poll: 30
+
+    - name: "[{{ install_pkg_name }}] source —— 暴露命令到 PATH"
+      ansible.builtin.file:
+        src: "{{ ruby_prefix }}/bin/{{ item }}"
+        dest: "{{ ruby_bin_link_dir }}/{{ item }}"
+        state: link
+        force: true
+      loop:
+        - ruby
+        - gem
+        - irb
+        - rake
+        - bundle
+        - bundler
+      become: true
+      failed_when: false
+
+# ---------- 安装后校验 ----------
+- name: "[{{ install_pkg_name }}] 在线 —— 校验 ruby 可用"
+  ansible.builtin.shell: |
+    set -u
+    command -v ruby >/dev/null 2>&1 || { echo "未找到 ruby 命令" >&2; exit 1; }
+    ruby -e 'print RUBY_VERSION'
+  args:
+    executable: /bin/bash
+    chdir: /tmp
+  register: _ruby_final_check
+  changed_when: false
+  become: true
+
+- name: "[{{ install_pkg_name }}] 在线 —— 记录实际安装版本"
+  ansible.builtin.set_fact:
+    install_pkg_version_actual: "{{ _ruby_final_check.stdout | trim | default(install_pkg_version, true) }}"
+
+- name: "[{{ install_pkg_name }}] 在线 —— 版本不达标时告警"
+  ansible.builtin.debug:
+    msg:
+      - "⚠️  ruby 实际版本 {{ install_pkg_version_actual }} 低于目标 {{ install_pkg_version }}"
+      - "    Debian 仓库版本受发行版限制；如需更高版本请设置 ruby_install_method=source"
+      - "    ruby_enforce_version={{ ruby_enforce_version }}"
+  when: not (_ruby_final_check.stdout | trim is version(install_pkg_version, '>='))
+
+- name: "[{{ install_pkg_name }}] 在线 —— 版本不达标时中止"
+  ansible.builtin.fail:
+    msg: >-
+      ruby 实际版本 {{ install_pkg_version_actual }} 低于要求的 {{ install_pkg_version }}。
+      请改用 ruby_install_method=source，或提供符合要求的离线包。
+  when:
+    - not (_ruby_final_check.stdout | trim is version(install_pkg_version, '>='))
+    - ruby_enforce_version | bool
+
+- name: "[{{ install_pkg_name }}] 在线 —— 输出结果"
+  ansible.builtin.debug:
+    msg: "✅ Ruby 安装完成：{{ install_pkg_version_actual }}（方式 {{ ruby_install_method }}）"

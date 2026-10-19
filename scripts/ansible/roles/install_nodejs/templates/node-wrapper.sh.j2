@@ -1,0 +1,23 @@
+#!/bin/sh
+# {{ ansible_managed | default('Ansible managed') }}
+# {{ item }} —— 由 install_nodejs role 生成的包装脚本
+#
+# 为什么需要包装而不是软链：
+#   node 二进制本身可以直接软链，但 nvm 管理的 node 依赖
+#   NVM_DIR / NVM_BIN 等环境才能让 npm 正常工作；
+#   ssh 非交互执行、systemd、cron 都不读 /etc/profile.d，
+#   因此把环境变量写死在这里，保证任何调用方式都可用。
+
+export NVM_DIR="{{ nvm_prefix }}"
+export NVM_BIN="{{ _nodejs_dir }}/bin"
+export NVM_INC="{{ _nodejs_dir }}/include/node"
+
+{% if nodejs_org_mirror | length > 0 %}
+export NVM_NODEJS_ORG_MIRROR="{{ nodejs_org_mirror }}"
+{% endif %}
+
+# 把当前版本目录放到 PATH 最前，确保 npm 内部的 #!/usr/bin/env node 也命中
+PATH="{{ _nodejs_dir }}/bin:${PATH}"
+export PATH
+
+exec "{{ _nodejs_dir }}/bin/{{ item }}" "$@"
