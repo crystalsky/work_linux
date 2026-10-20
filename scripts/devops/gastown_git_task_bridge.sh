@@ -13,6 +13,14 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ── git 钩子环境清理 ────────────────────────────────────────────────
+# post-receive 钩子运行时，git 会注入 GIT_DIR / GIT_WORK_TREE 等变量，
+# 且 GIT_DIR 往往是相对路径（"."）。这会让 gt 内部调用的 git 在不同的
+# 工作目录下解析仓库，报「不是 Git 仓库：'.'」并使整个派发失败。
+# 这里统一清理，保证后续 gt / bd 运行在干净环境中。
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX 2>/dev/null || true
+
 TOWN="${GT_TOWN:-}"
 GT_BIN="${GT_BIN:-$HOME/.local/bin/gt}"
 BD_BIN="${BD_BIN:-$HOME/.local/bin/bd}"
@@ -210,21 +218,28 @@ install_hook() {  # <bare-repo>
 set -euo pipefail
 BRIDGE="$SELF_DIR/$(basename "$0")"
 TOWN="$TOWN"
+REPO="\$PWD"   # post-receive 的工作目录即 bare 仓库根
+
+# git 注入的 GIT_DIR 等可能为相对路径，会污染 gt 的子进程；
+# 改用显式 --git-dir 调用 git，并清空这些变量。
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX 2>/dev/null || true
+git_bare() { git --git-dir="\$REPO" "\$@"; }
 
 while read -r oldrev newrev ref; do
   [[ "\$ref" == "refs/heads/"* ]] || continue
 
   # 首次推送（oldrev 全 0）时覆盖整个分支上的任务单；否则只处理本次新增/修改的
   if [[ "\$oldrev" == "0000000000000000000000000000000000000000" ]]; then
-    list_cmd="git ls-tree -r --name-only \$newrev"
+    list_cmd="git_bare ls-tree -r --name-only \$newrev"
   else
-    list_cmd="git diff --name-only --diff-filter=AM \$oldrev \$newrev"
+    list_cmd="git_bare diff --name-only --diff-filter=AM \$oldrev \$newrev"
   fi
 
   while IFS= read -r path; do
     [[ -n "\$path" ]] || continue
     tmp="\$(mktemp)"
-    git show "\$newrev:\$path" > "\$tmp"
+    git_bare show "\$newrev:\$path" > "\$tmp"
     echo "==> 任务单来自 git push: \$path"
     if ! "\$BRIDGE" dispatch "\$tmp" --town "\$TOWN"; then
       echo "!! 派发失败（任务单仍保留在 git 中）: \$path" >&2
@@ -235,6 +250,11 @@ done
 EOF
 
   chmod +x "$hook"
+
+  # bare 仓库默认 HEAD 指向 master，会导致 clone 后工作区为空（悬空 HEAD）。
+  # 统一指向 main，使「clone → 加任务单 → push」这条链路开箱可用。
+  git -C "$repo" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
+
   log "已安装 post-receive 钩子: $hook"
   log "  桥脚本: $SELF_DIR/$(basename "$0")"
   log "  town  : $TOWN"

@@ -4,8 +4,8 @@ type: note
 status: active
 scope: 
 created: 2026-10-20 19:20:00
-updated: 2026-10-20 19:20:00
-summary: "以「git push 任务单」作为唯一任务入口，把任务自动转化为 Gas Town 的 bead 并派发给 mayor/dev/tester 四类工位；给出三层提示词约束模型（内置角色模板 / 工位 AGENTS.md / 任务单正文）与端到端协作流程，含可复现脚本与实测记录。"
+updated: 2026-10-20 21:40:00
+summary: "以「git push 任务单」作为唯一任务入口，把任务自动转化为 Gas Town 的 bead 并派发给 mayor/dev/tester 四类工位；给出三层提示词约束模型（内置角色模板 / 工位 AGENTS.md / 任务单正文）与端到端协作流程；已按真实演练修正关键坑（工位必须先行在线、bare 仓库 HEAD、钩子 GIT_DIR 污染），含可复现脚本与实测记录。"
 keywords: [linux, gastown, multi-agent, git, prompt-engineering, beads, collaboration, pi]
 verification: "scripts/devops/gastown_git_task_bridge.sh dispatch tasks/xxx.task.md -n；git push 后 gt polecat identity list collab_rig；gt convoy list"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。本机所有示例路径以 gt_ai / collab_rig 为准。"
@@ -202,6 +202,32 @@ gt polecat identity list collab_rig
 > `20261020-gastown-long-prefix-rig-agent-identity-patch.md`。
 > 若 `identity list` 输出恒为空，先回该文档确认补丁是否已应用。
 
+#### 5.3.1 让工位「在线」（派发前的关键前置）
+
+> [!CAUTION]
+> **这是本手册最容易被忽略、后果最严重的一步。**
+> gt 采用「持久化 polecat」模型：当目标工位**没有活跃会话**时，
+> `gt sling <bead> <rig>/polecats/<名字>` 里的 `<名字>` **会被忽略**，
+> gt 改为复用 rig 内**第一个 idle 工位**（`FindIdlePolecat()`，
+> 见 `internal/polecat/manager.go:2153` 与 `internal/cmd/polecat_spawn.go:142`）。
+>
+> 实测后果：把只读验收任务派给 `tester`，结果被 **dev1** 领走，角色约束完全错位。
+
+正确做法是**先让目标工位有会话**，再派发：
+
+```bash
+cd /home/vire/work_luli/gt_work/gt_ai
+
+# 让三个工种工位先「上线」（只启动会话，不派活）
+gt session start collab_rig/dev1
+gt session start collab_rig/dev2
+gt session start collab_rig/tester
+
+gt session list     # 三个工位都应显示 ●
+```
+
+工位已有会话时，`gt sling` 走「直接挂 Hook」路径，`<名字>` 被正确尊重。
+
 ### 5.4 重启并验证
 
 ```bash
@@ -227,6 +253,18 @@ BUS=/home/vire/work_luli/gt_work/person_demo/tasks.git
 git init --bare "$BUS"
 ```
 
+> [!IMPORTANT]
+> **bare 仓库的 `HEAD` 必须指向 `main`。**
+> `git init --bare` 默认 `HEAD → refs/heads/master`，而本手册推送的是 `main`，
+> 会导致 `git clone` 后**工作区为空**
+> （`warning: remote HEAD refers to nonexistent ref`），后续 `cp 任务单 → commit` 直接失败。
+> `install-hook` 已自动执行 `git symbolic-ref HEAD refs/heads/main`；
+> 手工建仓请自行补上：
+>
+> ```bash
+> git -C "$BUS" symbolic-ref HEAD refs/heads/main
+> ```
+
 ### 6.2 安装 post-receive 钩子
 
 ```bash
@@ -245,21 +283,28 @@ scripts/devops/gastown_git_task_bridge.sh install-hook \
 set -euo pipefail
 BRIDGE="/home/vire/work_luli/work_linux/scripts/devops/gastown_git_task_bridge.sh"
 TOWN="/home/vire/work_luli/gt_work/gt_ai"
+REPO="$PWD"   # post-receive 的工作目录即 bare 仓库根
+
+# git 注入的 GIT_DIR 等可能为相对路径，会污染 gt 的子进程；
+# 改用显式 --git-dir 调用 git，并清空这些变量。
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX 2>/dev/null || true
+git_bare() { git --git-dir="$REPO" "$@"; }
 
 while read -r oldrev newrev ref; do
   [[ "$ref" == "refs/heads/"* ]] || continue
 
   # 首次推送（oldrev 全 0）时覆盖整个分支上的任务单；否则只处理本次新增/修改的
   if [[ "$oldrev" == "0000000000000000000000000000000000000000" ]]; then
-    list_cmd="git ls-tree -r --name-only $newrev"
+    list_cmd="git_bare ls-tree -r --name-only $newrev"
   else
-    list_cmd="git diff --name-only --diff-filter=AM $oldrev $newrev"
+    list_cmd="git_bare diff --name-only --diff-filter=AM $oldrev $newrev"
   fi
 
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
     tmp="$(mktemp)"
-    git show "$newrev:$path" > "$tmp"
+    git_bare show "$newrev:$path" > "$tmp"
     echo "==> 任务单来自 git push: $path"
     if ! "$BRIDGE" dispatch "$tmp" --town "$TOWN"; then
       echo "!! 派发失败（任务单仍保留在 git 中）: $path" >&2
@@ -268,6 +313,13 @@ while read -r oldrev newrev ref; do
   done < <($list_cmd | grep -E '\.task\.md$' || true)
 done
 ```
+
+> [!IMPORTANT]
+> **`unset GIT_*` + `git --git-dir` 是必需的，不是可选项。**
+> post-receive 钩子运行时，git 会把 `GIT_DIR` 注入为**相对路径**（`"."`）。
+> gt 内部会调用 `git` 做 worktree 校验，在别的目录下解析 `GIT_DIR=.` 就会得到
+> `fatal: 不是 Git 仓库：'.'`，进而报 `worktree verification failed`，**整条派发链失败**。
+> 现象是 push 后只看到一堆 `gt sling` 的 usage 输出，找不到真实错误。
 
 **钩子行为要点**：
 
@@ -633,6 +685,18 @@ TASK
 
 ### 8.2 通过 git 通知任务（唯一的人工动作）
 
+> [!CAUTION]
+> **派发前先确保目标工位在线**（见 5.3.1）。若 `tester` 无会话，
+> gt 会把这个验收任务复用给 dev1 —— 实际实测就是这样错位的。
+>
+> ```bash
+> cd /home/vire/work_luli/gt_work/gt_ai
+> gt session start collab_rig/dev1
+> gt session start collab_rig/dev2
+> gt session start collab_rig/tester
+> gt session list   # 三个工位均应为 ●
+> ```
+
 ```bash
 BUS=/home/vire/work_luli/gt_work/person_demo/tasks.git
 WORK=/tmp/task-push
@@ -789,6 +853,45 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 | `gt mq list` 返回 `null` | 空队列的 JSON 表达 | 脚本里做容错，`jq -r '.[]?'` |
 | Agent 干完活在那干等 | 未执行 `gt done` | 属 Posecat 模板已覆盖的情形；检查会话是否收不到 mail（`gt hooks sync`） |
 | 派发报 `bead is already being slung` | 同 bead 并发派发 | 等待当前派发完成再重试 |
+| **`gt` 报 `not in a Gas Town workspace`** | 当前目录不在 town/rig 内 | 先 `cd /home/vire/work_luli/gt_work/gt_ai`（或 rig 目录）再执行 |
+| **派给 A，结果 B 做了** | 目标工位无活跃会话，gt 复用第一个 idle 工位 | **先 `gt session start <rig>/<工位>`**，再 `gt sling`（见 5.3.1） |
+| **gt 自动建出数字名工位（如 51/52）** | 工位处于 ghost 状态（`spawning` 但无会话），gt 判定 dead 并孵化替身 | 清掉 ghost 工位：见下方「复位工位状态」 |
+| **`identity remove` 报 `identity bead ... not found`** | 命令查库路径与 list 不一致（已知问题） | 改用 `bd delete <identity-bead> --force` |
+| **clone 后工作区为空** | bare 仓库 HEAD 指向 `master`，推的是 `main` | `git -C "$BUS" symbolic-ref HEAD refs/heads/main` |
+| **push 后 `gt sling` 报一堆 usage，派发失败** | 钩子的 `GIT_DIR` 污染 gt 子进程 | 钩子必须 `unset GIT_*` + `git --git-dir`（脚本已内置） |
+| `⚠ Warning: could not sync agent_state column ... issue not found` | identity bead 在 rig 库、同步走了 hq 库（补丁副作） | **可忽略**，不影响派发与执行；工位状态可用 `gt session list` 交叉确认 |
+| `Warning: no route found for prefix "gt-" ... falling back to ...` | 非 rig 前缀 bead 的回退提示 | **可忽略**，gt 已回退到 rig 库 |
+
+#### 复位工位状态（清理 ghost 工位）
+
+当 `gt polecat identity list <rig>` 里出现你不认识的工位、状态停畵在 `spawning` 却无会话时：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+TOWN=/home/vire/work_luli/gt_work/gt_ai
+cd "$TOWN"
+
+# 1) 看实际会话（真实是否在线，以这个为准）
+gt session list
+
+# 2) 删除 ghost 身份 bead（直接操作 rig 库）
+cd "$TOWN/collab_rig"
+bd delete collab-collab_rig-polecat-51 collab-collab_rig-polecat-52 --force
+rm -rf polecats/51 polecats/52
+
+# 3) 把工位重建为干净的 idle 状态
+cd "$TOWN"
+gt polecat identity add collab_rig dev2
+
+# 4) 重新上线
+cd "$TOWN"
+gt session start collab_rig/dev2
+gt session list
+```
+
+> [!NOTE]
+> 正常流程下不会产生 ghost 工位；它们只在「工位被删但会话没停」
+> 或「会话被 kill 但身份没重置」后出现。如果你完全按本手册顺序操作，可略过此节。
 
 ---
 
@@ -821,6 +924,15 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 | 幂等 | 同一任务单二次推送 | 未重复派发（`git diff` 无变更 → 不重复处理）✔ |
 | 钩子语法 | `bash -n <bare>/hooks/post-receive` | 通过 ✔ |
 | 角色上下文机制 | pi 文档 + worktree 实测 | pi 从工作目录向上加载 `AGENTS.md`；gt 生成 `CLAUDE.md` 于 worktree ✔ |
+| **gt 目录依赖** | 在 town 外执行 `gt` | 报 `not in a Gas Town workspace` ✔（文档已强调 cd） |
+| **重复 `gt rig add` 幂等** | 再次 `gt rig add collab_rig ...` | 提示 `rig already exists` 但**退出码 0**，`rigs.json` 未被改动 ✔ |
+| **重复 `gt polecat identity add` 幂等** | 再次 add `dev1` | bead 未重复（仍 1 条）✔ |
+| **bare 仓库 HEAD 修正** | `install-hook` 后 `git clone` | `HEAD` 指向 `refs/heads/main`，clone 后正确检出 `main` ✔ |
+| **钩子环境修正（GIT_DIR）** | 真实 `git push` 触发派发 | 修正前：`fatal: 不是 Git 仓库：'.'`→ 派发失败；修正后：`✓ Work attached to hook` ✔ |
+| **派发精确落点（核心）** | tester 无会话 vs 有会话各派一次 | 无会话：**复用 idle dev1**（错位）；`gt session start` 后：**精确落 tester** ✔ |
+| **角色约束真实生效** | 在三个工位各自跑 `pi -p` 提问 | dev1 → “不能改 `test_*.py`”；tester → “对实现文件只读”；dev2 → “不得 `git push`” ✔ |
+| **Agent 端到端执行** | `gt peek collab_rig/tester` | 实测看到 tester 执行 `bd update ... --status=in_progress` + 读 `scripts/run-tests.sh` ✔ |
+| `gt polecat identity remove` 可用性 | 实测去除残留身份 | 报 `identity bead ... not found`（已知缺陷），改用 `bd delete --force` ✔ |
 
 ---
 
@@ -829,3 +941,4 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 | 时间 | 变更 |
 |------|------|
 | 2026-10-20 19:20 | 初版：版本核查结论、git 任务通道、三层提示词约束、端到端事例、协作流程全景 |
+| 2026-10-20 21:40 | **按真实演练结果修正**：① 新增 5.3.1「工位必须在线」（否则指定目标被忽略，任务错派）；② 6.1 补 bare 仓库 HEAD 必须指向 `main`；③ 6.2 钩子改用 `git --git-dir` + `unset GIT_*`（否则 `GIT_DIR` 污染导致派发失败）；④ 第十节新增 8 类真实故障与「复位工位状态」；⑤ 第十二节补全真实演练验证记录；⑥ 同步修正桥脚本 `install-hook`（HEAD 与 git 环境清理） |
