@@ -133,6 +133,7 @@
   - [Pi 编码 Agent 扩展与技能（extensions/skills）离线打包与部署手册](devops_ai_agent/20261018-pi-extensions-skills-offline-bundle-deploy.md)（含 `scripts/skills/pack_pi_extensions_skills.sh` + `scripts/skills/deploy_pi_extensions_skills.sh`；实测打包 6 扩展 + 120 技能，归档 `~/.work_linux_working/artifacts/pi-extensions-skills-offline-20261018.tar.gz`）
 - **devops_gastown**
   - [Gas Town 停机/重建与多 Polecat 协同派活全流程（stop → rebuild → dev1/dev2/tester 协同）](devops_gastown/20261020-gastown-stop-rebuild-multi-polecat-flow.md)（含版本核查（gt 1.2.1 最新 + 本地补丁判定）、`down` 与 `shutdown` 分级对照、自定义命名池固定员工名、`sling` 到 rig 的确定性派活、单一 convoy 组成 swarm；沉淀 10 项实测坑：具名 polecat 需先有会话、`pool-init` 抢占名字致数字溢出名、命名须 >3 字符、`shutdown` 需 `--nuclear` 才清未提交工作区、`gt bead move` 在 bd 1.0.0 不可用等）
+  - [Gas Town 多员工协同干活：从停机到三名 AI 员工并行交付的通俗手册（不懂开发也能照着做）](devops_gastown/20261020-gastown-multi-polecat-beginner-guide.md)（上文的**通俗改写版 + 真机从零复现记录**：以「公司下班再上班、招聘 dev1/dev2/tester 分头干活」为比喻，覆盖停机清理→重建名册→开工→立项目拆任务→派活到 rig→共享 convoy 看板→观察收工七步；附「怎么判断真的成功」判据表与 10 项新手坑通俗解释；本次实测 190 项单测全过、三条提交入主干）
 - **devops_code_analysis**
   - [C/C++ 代码分析工具链：快速部署、接口/业务链扫描与单元测试体系实施方案](devops_code_analysis/20261009-code-analysis-toolchain-deployment-guide.md)（含 `scripts/code_analysis/`：安装、离线打包、接口扫描、静态分析、单测脚手架、覆盖率、业务链追踪、code-review-graph 多语言接口手册、Understand-Anything 业务域图谱、Dockerfile）
   - [Node.js / Java / C++ 自动化测试工具链与离线包清单（Python 3.11 / JDK≥8 / glibc≤2.27）](devops_code_analysis/20261009-nodejs-java-cpp-testing-toolchain-package-list.md)
