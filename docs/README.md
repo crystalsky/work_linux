@@ -60,6 +60,7 @@
   - [ldd_install.sh 动态库依赖收集脚本与 CMake 集成指南](devops_shell/20260828-ldd-install-script-cmake-integration.md)
   - [fd + fzf 安装配置与常用查找命令使用手册](devops_shell/20260920-fd-fzf-install-usage-guide.md)
   - [direnv 目录级环境变量管理：work_linux 仓库 .envrc + .env.default 落地手册](devops_shell/20261017-direnv-env-management.md)（含仓库文件 `.envrc`、`.env.default`）
+  - [Linux Mint 环境 Oh My Zsh 安装配置与插件使用手册](devops_shell/20261020-oh-my-zsh-install-config-guide.md)（含 nvm / PATH 环境迁移、`/etc/profile.d` 补齐）
 - **devops_editor**
   - [vim 安装与依赖修复记录](devops_editor/20260601-vim-install-record.md)
   - [micro 终端文本编辑器：功能说明、使用手册、配置与插件管理指南](devops_editor/20260930-micro-editor-install-config-guide.md)（含 `scripts/editor/micro_setup.sh`）
