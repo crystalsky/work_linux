@@ -1,1 +1,6 @@
-{"skills": ["../.opencode/skill"]}
+{
+  "skills": [
+    "../.opencode/skill",
+    "!../.opencode/skill/*-workspace/**"
+  ]
+}
