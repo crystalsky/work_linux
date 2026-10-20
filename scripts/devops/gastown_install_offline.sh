@@ -125,6 +125,14 @@ rm -rf "$TMP/gt-extract"; mkdir -p "$TMP/gt-extract"
 tar -C "$TMP/gt-extract" -xzf "$GT_TARBALL"
 install -m 0755 "$(find "$TMP/gt-extract" -name gt -type f | head -1)" "$BIN_DIR/gt"
 
+# 若离线包携带修补版 gt（长前缀 rig 的 agent-ID 解析修复），就地覆盖官方二进制。
+# 补丁说明见 docs/devops_ai_agent/20261020-gastown-long-prefix-rig-patch.md
+GT_PATCHED="$(find "$PAYLOAD_DIR" -maxdepth 1 -name 'gt-*-patched' -type f | head -1 || true)"
+if [[ -n "$GT_PATCHED" ]]; then
+  log "检测到修补版 gt，覆盖安装：$(basename "$GT_PATCHED")"
+  install -m 0755 "$GT_PATCHED" "$BIN_DIR/gt"
+fi
+
 # --- 4. bd（真实二进制 + ICU 74 私有副本 + wrapper） -------------------------
 BD_TARBALL="$(find "$PAYLOAD_DIR" -maxdepth 1 -name 'beads_*_linux_amd64.tar.gz' | head -1 || true)"
 [[ -n "$BD_TARBALL" ]] || die "payload 中缺少 beads_*_linux_amd64.tar.gz"
@@ -144,15 +152,46 @@ cat > "$BIN_DIR/bd" <<EOF
 #!/usr/bin/env bash
 # Gas Town / Beads launcher
 #   1) 为 bd 注入私有 ICU 74 运行库路径（不改动系统库）
-#   2) 兼容性补丁：bd ${BEADS_RUNTIME_VERSION} 在存在 BEADS_DOLT_DATA_DIR 时会忽略
+#   2) 兼容性补丁 A：bd ${BEADS_RUNTIME_VERSION} 在存在 BEADS_DOLT_DATA_DIR 时会忽略
 #      BEADS_DIR/metadata.json 中的 dolt_database，连到错误的库（多 rig 场景下
 #      表现为 gt show / gt sling 报 bead not found）。gt 已通过
 #      BEADS_DOLT_SERVER_HOST/PORT 提供连接信息，剥离该变量是安全的。
+#   3) 兼容性补丁 B：gt 的 `gt polecat identity add` 会把 BEADS_DIR 固定为
+#      <town>/.beads，使 identity bead 误落 town 库；而 `gt polecat identity list`
+#      读取 <town>/<rig>/.beads，导致列表永远为空。此处在 create 调用上按
+#      --id 中的 rig 名把 BEADS_DIR 重定向回 rig 库。
 set -euo pipefail
 ICU_LIB_DIR="${ICU_DIR}/usr/lib/x86_64-linux-gnu"
 if [ -d "\$ICU_LIB_DIR" ]; then
   export LD_LIBRARY_PATH="\$ICU_LIB_DIR\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
 fi
+
+# ---- 补丁 B：polecat identity create 的库重定向 ----
+if [ -n "\${BEADS_DIR:-}" ] && [ "\${1:-}" = "create" ]; then
+  _bd_town_root="\$(dirname "\${BEADS_DIR%/}")"
+  if [ -f "\${_bd_town_root}/rigs.json" ]; then
+    _bd_id=""
+    for _bd_arg in "\$@"; do
+      case "\$_bd_arg" in
+        --id=*) _bd_id="\${_bd_arg#--id=}" ;;
+      esac
+    done
+    if [ -n "\$_bd_id" ]; then
+      for _bd_rig_dir in "\${_bd_town_root}"/*/; do
+        _bd_rig="\$(basename "\${_bd_rig_dir}")"
+        case "\$_bd_id" in
+          *-"\${_bd_rig}"-polecat-*)
+            if [ -d "\${_bd_rig_dir%/}/.beads" ]; then
+              export BEADS_DIR="\${_bd_rig_dir%/}/.beads"
+            fi
+            ;;
+        esac
+      done
+    fi
+  fi
+fi
+
+# ---- 补丁 A：BEADS_DIR 已确定时剥离 BEADS_DOLT_DATA_DIR ----
 if [ -n "\${BEADS_DIR:-}" ]; then
   unset BEADS_DOLT_DATA_DIR
 fi

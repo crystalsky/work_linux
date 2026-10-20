@@ -4,8 +4,8 @@ type: note
 status: active
 scope: Ubuntu 26.04，HQ = ~/gt，示例 rig = demo_rig，运行时 = pi 1.3.0
 created: 2026-10-19 15:35:00
-updated: 2026-10-19 17:40:00
-summary: "在已部署好 gt 1.2.1 + bd 1.0.0 的本机上，以 pi 为运行时从零走通 Gas Town 的初始化（rig/crew/daemon）、配置（agent 别名、role_agents、merge_queue、routing.mode、pi 项目信任）、使用（bead、sling、convoy、feed、dashboard、mail）全流程，并记录 7 项实测发现与可落地的规避方法。"
+updated: 2026-10-20 17:45:00
+summary: "在已部署好 gt 1.2.1 + bd 1.0.0 的本机上，以 pi 为运行时从零走通 Gas Town 的初始化（rig/crew/daemon）、配置（agent 别名、role_agents、merge_queue、routing.mode、pi 项目信任）、使用（bead、sling、convoy、feed、dashboard、mail）全流程，并记录 8 项实测发现与可落地的规避方法。"
 keywords: [linux, ubuntu, ai_agent, gastown, gt, beads, dolt, convoy, verification, sop]
 verification: "cd ~/gt && gt doctor（期望 0 failed）；gt status 显示 [pi/…] 且各角色在运行；tmux -L <socket> capture-pane 会话内含 [gastown] 钩子输出"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。"
@@ -579,6 +579,8 @@ exec "${HOME}/.local/libexec/gastown/bd-1.0.0" "$@"
 ```
 
 该补丁已同步进 `scripts/devops/gastown_install_offline.sh`，离线包重新生成后自带修复。
+同一 wrapper 另含**补丁 B**（identity 落库重定向），且官方 gt 还需要换用修补版二进制——
+详见下方**问题 8**。
 
 ### 问题 2：新增 rig 后 daemon 不轮询新库的事件 ⚠️ 需人工重启
 
@@ -696,6 +698,45 @@ gt doctor          # 复验：应为 91 passed / 2 warnings / 0 failed
 
 > 实测 `gt hooks sync` 会为 mayor、deacon、crew、各 polecat 生成 pi 扩展文件；
 > **HQ 根目录不会生成** `.pi`，避免通过目录继承污染子工作区。
+
+### 问题 8：长前缀 rig 的 `gt polecat identity add` 成功但 `identity list` 恒为空 ⚠️ 需双修补
+
+**现象**：为具名 polecat 建好身份后无法列出，`gt sling` 因此找不到该角色：
+
+```bash
+$ gt polecat identity add collab_rig dev1
+✓ Created identity bead: collab-collab_rig-polecat-dev1
+$ gt polecat identity list collab_rig
+No polecat identities found in collab_rig.
+```
+
+**根因**（两处独立缺陷，必须同时修）：
+
+1. **落库错位**：gt 有意在 town 库创建 agent bead，并依赖 bd 读取 `<town>/.beads/routes.jsonl`
+   把 `collab-` 前缀路由到 `collab_rig`；但 **bd 1.0.0 不读路由表**（`bd create` 只认
+   `metadata.json` 的 `prefix`，跨前缀要求 `--force`），于是 bead 全部留在 `hq` 库，
+   而 `identity list` 在 rig 库读取。
+2. **前缀长度假设不一致**：写侧 `AgentBeadIDWithPrefix` 不限前缀长度，读侧
+   `ParseAgentBeadID` 却硬性要求 `hyphenIdx <= 3`，导致 `collab`（6 字符）永远解析失败。
+
+**处置**：
+
+- 补丁 B（bd wrapper）：`create` 时按 `--id` 中的 rig 名把 `BEADS_DIR` 重定向回 rig 库；
+- 补丁 C：用 `scripts/devops/gastown_build_patched_gt.sh` 重编译 gt，将前缀上限放宽到 32
+  （构建需外网 + Go 工具链，约 10 秒）。
+
+```bash
+cd ~/work_luli/work_linux
+scripts/devops/gastown_build_patched_gt.sh --download-src
+cp -a ~/.local/bin/gt ~/.local/bin/gt.bak-$(date +%Y%m%d-%H%M%S)
+install -m 0755 ~/.work_linux_working/artifacts/gt-1.2.1-patched ~/.local/bin/gt
+cd <town> && gt down && gt up
+```
+
+**复验**：`gt polecat identity list collab_rig` 应输出 `3 identity bead(s)`。
+
+> 完整定位过程、设计取舍与回滚方式见
+> 《[Gas Town 长前缀 rig 的 Agent 身份识别修复](20261020-gastown-long-prefix-rig-agent-identity-patch.md)》。
 
 ### 附带观察：MR 可能长时间停在 Refinery 队列
 

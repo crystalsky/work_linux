@@ -4,8 +4,8 @@ type: note
 status: active
 scope: Ubuntu 26.04 LTS 本机用户级安装（全部落在 ~/.local，免 sudo、不改系统库）
 created: 2026-10-19 11:05:00
-updated: 2026-10-19 17:40:00
-summary: "记录 Gas Town（gt 1.2.1 + bd 1.0.0 + dolt 2.5.0 + Go 1.26.2）在本机的完整部署过程：go/gh-proxy/清华镜像的离线包制备、bd 与 gt 内嵌 beads 版本必须一致的踩坑、Ubuntu 26.04 缺 ICU74 的零侵入处置、HQ 初始化与验证，以及本地实操后新增的 bd 路由补丁、daemon 重启要求与 pi 运行时的项目信任前置配置。"
+updated: 2026-10-20 17:45:00
+summary: "记录 Gas Town（gt 1.2.1 + bd 1.0.0 + dolt 2.5.0 + Go 1.26.2）在本机的完整部署过程：go/gh-proxy/清华镜像的离线包制备、bd 与 gt 内嵌 beads 版本必须一致的踩坑、Ubuntu 26.04 缺 ICU74 的零侵入处置、HQ 初始化与验证，以及本地实操后新增的 bd 路由补丁（A/B）、daemon 重启要求、pi 运行时的项目信任前置配置，与长前缀 rig 所需的 gt 源码修补版重编译。"
 keywords: [linux, ubuntu, ai_agent, gastown, gt, beads, bd, dolt, offline, install, multi-agent]
 verification: "cd ~/gt && gt doctor 输出 0 failed；gt status 显示 dolt、daemon、mayor、deacon 均运行；bd version 输出 1.0.0；gt show <rig-bead> 可正常读取 rig 库"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。"
@@ -54,7 +54,7 @@ ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改
 ```bash
 cd /path/to/work_linux
 ./scripts/devops/gastown_offline_bundle.sh
-# 产物：~/.work_linux_working/artifacts/gastown-offline-1.2.1.tar.gz（实测 167 MB）
+# 产物：~/.work_linux_working/artifacts/gastown-offline-1.2.1.tar.gz（实测 180 MB，含修补版 gt）
 ```
 
 脚本行为与可覆盖项：
@@ -300,7 +300,15 @@ cd ~/gt && gt doctor    # 再次确认为 0 failed
   fi
   ```
 
-  该补丁已写入 `scripts/devops/gastown_install_offline.sh`，重新生成离线包后目标机开箱生效。
+  该补丁（下称**补丁 A**）已写入 `scripts/devops/gastown_install_offline.sh`，重新生成离线包后目标机开箱生效。
+
+  > [!NOTE]
+  > 同一 wrapper 另含**补丁 B**：`gt polecat identity add` 会把 `BEADS_DIR` 固定为 town 库，
+  > 而 `gt polecat identity list` 读取 rig 库，导致身份列表恒为空；补丁 B 在 `create` 调用上
+  > 按 `--id` 中的 rig 名把库重定向回 rig。此外官方 gt 二进制还将 agent ID 前缀硬编码为 2~3 字符，
+  > 长前缀 rig（如 `--prefix collab`）需改用**修补版 gt**。两者细节与操作步骤见
+  > 《[Gas Town 长前缀 rig 的 Agent 身份识别修复](20261020-gastown-long-prefix-rig-agent-identity-patch.md)》，
+  > 构建脚本为 `scripts/devops/gastown_build_patched_gt.sh`，离线包会自动携带其产物。
 
 ### 6. 运行期新增 rig 后，daemon 不感知新库事件
 
@@ -393,7 +401,7 @@ Rig ：demo_rig（prefix demo，分支 main，来源 file://…/gastown-verify/d
 运行时：pi 1.3.0（内置预设 pi -e .pi/extensions/gastown-hooks.js；模型 litellm/huangza-openai-deepseek-flash）
 信任：~/.pi/agent/trust.json → {"/home/vire/gt": true}（pi 项目信任前置，否则角色会话会卡确认框）
 健康：gt doctor → 91 passed / 2 warnings（shell integration 未装；patrol wisp 待运行时认证后消化）
-离线包：~/.work_linux_working/artifacts/gastown-offline-1.2.1.tar.gz（167 MB，已含 bd 路由补丁）
+离线包：~/.work_linux_working/artifacts/gastown-offline-1.2.1.tar.gz（180 MB，已含 bd 路由补丁 A/B 与修补版 gt）
 下载缓存：~/.work_linux_working/downloads/gastown/、downloads/icu74/
 ```
 

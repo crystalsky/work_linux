@@ -1,0 +1,17 @@
+--- a/internal/beads/agent_ids.go
++++ b/internal/beads/agent_ids.go
+@@ -373,7 +373,13 @@
+ 	// Find the prefix (everything before the first hyphen)
+ 	// Valid prefixes are 2-3 characters (e.g., "gt", "bd", "hq")
+ 	hyphenIdx := strings.Index(id, "-")
+-	if hyphenIdx < 2 || hyphenIdx > 3 {
++	// LOCAL PATCH: upstream hardcodes the agent-ID prefix length to 2-3 chars
++	// (gt/bd/hq), but `gt rig add --prefix` does not enforce any length limit.
++	// The mismatch makes agent beads of long-prefix rigs unparseable, so a rig
++	// like `gt rig add collab_rig --prefix collab` can create polecat identity
++	// beads that `gt polecat identity list` can never display. Relax the upper
++	// bound while keeping the "prefix has at least 2 chars" lower bound.
++	if hyphenIdx < 2 || hyphenIdx > 32 {
+ 		return "", "", "", false
+ 	}
+ 

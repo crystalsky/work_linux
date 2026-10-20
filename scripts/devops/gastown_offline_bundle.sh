@@ -57,8 +57,9 @@ Gas Town 离线安装包制备脚本
 EOF
 }
 
-log() { printf '\033[1;34m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
-die() { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
+log()  { printf '\033[1;34m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
+warn() { printf '\033[1;33m[警告]\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -120,6 +121,20 @@ cp "beads_${BEADS_VERSION}_linux_amd64.tar.gz"     "$STAGE/payload/"
 cp "dolt-linux-amd64-v${DOLT_VERSION}.tar.gz"      "$STAGE/payload/dolt-linux-amd64.tar.gz"
 cp "libicu74_${ICU_DEB_VERSION}_amd64.deb"         "$STAGE/payload/libicu74_amd64.deb"
 
+# 修补版 gt：修复「长前缀 rig 的 agent-ID 无法解析」问题。离线机器无法就地编译，
+# 必须在有网机器上先用 gastown_build_patched_gt.sh 构建好二进制，再随包分发。
+GT_PATCHED="${GT_PATCHED:-${ART_DIR}/gt-${GT_VERSION}-patched}"
+GT_PATCHED_FLAG="（未打入，长前缀 rig 的 identity list 将失效）"
+if [[ -f "$GT_PATCHED" ]]; then
+  cp "$GT_PATCHED" "$STAGE/payload/gt-${GT_VERSION}-patched"
+  chmod 0755 "$STAGE/payload/gt-${GT_VERSION}-patched"
+  GT_PATCHED_FLAG="（已打入）"
+  log "已打入修补版 gt: gt-${GT_VERSION}-patched"
+else
+  warn "未找到修补版 gt: $GT_PATCHED"
+  warn "建议先执行：scripts/devops/gastown_build_patched_gt.sh --download-src"
+fi
+
 cat > "$STAGE/MANIFEST.txt" <<EOF
 Gas Town 离线安装包
 生成时间: $(date '+%Y-%m-%d %H:%M:%S')
@@ -137,6 +152,7 @@ payload/：
   beads_${BEADS_VERSION}_linux_amd64.tar.gz
   dolt-linux-amd64.tar.gz
   libicu74_amd64.deb
+  gt-${GT_VERSION}-patched  ${GT_PATCHED_FLAG}
 
 安装：解包后执行 payload 同级的 install.sh（由 gastown_install_offline.sh 生成）
 EOF

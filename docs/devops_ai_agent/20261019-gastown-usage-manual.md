@@ -4,8 +4,8 @@ type: note
 status: active
 scope: Ubuntu 26.04，HQ 位于 ~/gt，运行时为 pi（可切换 opencode/claude/codex 等）
 created: 2026-10-19 11:20:00
-updated: 2026-10-19 19:30:00
-summary: "Gas Town（gt 1.2.1）使用手册：Mayor/Town/Rig/Crew/Polecat/Hook/Convoy/Bead/Molecule 等概念、按场景分类的命令速查、最小可用用例（下发指令 + 收集各 agent 状态）、人工确认的上行与下行通道（escalate / nudge / mail）、Mayor 与 minimal 两种工作流、feed/dashboard/doctor 监控手段、运行时切换方法，以及本地实操后补充的跨 rig convoy 限制与 pi 项目信任前置条件。"
+updated: 2026-10-20 17:45:00
+summary: "Gas Town（gt 1.2.1）使用手册：Mayor/Town/Rig/Crew/Polecat/Hook/Convoy/Bead/Molecule 等概念、按场景分类的命令速查、最小可用用例（下发指令 + 收集各 agent 状态）、人工确认的上行与下行通道（escalate / nudge / mail）、Mayor 与 minimal 两种工作流、feed/dashboard/doctor 监控手段、运行时切换方法，以及本地实操后补充的跨 rig convoy 限制、pi 项目信任前置条件与长前缀 rig 的具名 polecat 身份修补。"
 keywords: [linux, ubuntu, ai_agent, gastown, gt, beads, usage, multi-agent, workflow]
 verification: "cd ~/gt && gt status；gt doctor；gt feed --plain；gt config agent list"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。"
@@ -75,7 +75,18 @@ gt mayor attach                    # 进入 Mayor 会话
 gt prime                           # 在既有会话中恢复角色上下文
 gt nudge <target> "message"        # 向某个 worker 发同步消息
 gt handoff                         # 交接给新会话，工作从 Hook 继续
+
+# 具名 polecat 身份（多角色协作时需要，如 dev1 / dev2 / qa）
+gt polecat identity add <rig> <name>          # 建立身份 bead
+gt polecat identity list <rig>                # 列出该 rig 的具名身份
+gt sling <bead-id> <rig>/polecats/<name>      # 派给指定具名 polecat
 ```
+
+> [!IMPORTANT]
+> 使用**长前缀 rig**（如 `gt rig add <rig> <url> --prefix collab`，前缀超过 3 个字符）时，
+> 官方 gt 1.2.1 的 `gt polecat identity list` 会恒为空（写入与读取分别落在 town 库与 rig 库，
+> 且解析时把前缀上限写死为 3）；需换用修补版 gt 并配合 bd wrapper 补丁。
+> 细节见《[Gas Town 长前缀 rig 的 Agent 身份识别修复](20261020-gastown-long-prefix-rig-agent-identity-patch.md)》。
 
 ### 工作跟踪（Convoy）
 
