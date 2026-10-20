@@ -4,10 +4,10 @@ type: note
 status: active
 scope: 
 created: 2026-10-20 19:20:00
-updated: 2026-10-20 23:10:00
+updated: 2026-10-20 21:55:00
 summary: "以「git push 任务单」作为唯一任务入口，把任务自动转化为 Gas Town 的 bead 并派发给 mayor/dev/tester 四类工位；给出三层提示词约束模型（内置角色模板 / 工位 AGENTS.md / 任务单正文）与端到端协作流程；已按从零重建的完整回归实测修正全部与执行不一致之处（工位必须 pool-init 后才可上线、bare 仓库 HEAD、钩子 GIT_DIR 污染、Hook 查看口径、refinery 跑偏等），含可复现脚本与实测记录。"
 keywords: [linux, gastown, multi-agent, git, prompt-engineering, beads, collaboration, pi]
-verification: "scripts/devops/gastown_git_task_bridge.sh dispatch tasks/xxx.task.md -n；git push 后 gt polecat identity list collab_rig；gt convoy list"
+verification: "scripts/devops/gastown_git_task_bridge.sh dispatch tasks/xxx.task.md -n；git push 后用 gt polecat status collab_rig/<版位> 看 Hook/State；gt convoy list"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。本机所有示例路径以 gt_ai / collab_rig 为准。"
 ---
 
@@ -46,7 +46,7 @@ ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改
 | **dolt** | 2.5.0 | **v2.5.0**（2026-10-17 发布） | ✅ **已是最新** | `api.github.com/repos/dolthub/dolt/releases/latest` |
 | **Go 工具链** | 1.26.2 | 1.27.3 | ⚠️ **落后一个次版本** | 仅编译期需要（`gastown_build_patched_gt.sh` 用）。**运行 gt 不需要 Go**，故非必须升级；若要重编译补丁版 gt，1.26.2 已能正常产出 |
 | **pi（运行时）** | 1.3.0 | **1.3.0** | ✅ **已是最新** | `npm view @earendil-works/pi-coding-agent version` = 1.3.0 |
-| opencode（备用运行时） | v2.0.26 | — | 可用 | 通过 `gt config agent <role> opencode` 切换 |
+| opencode（备用运行时） | v2.0.26 | — | 可用 | 通过 `gt config agent set <名> opencode` 切换默认 agent（或 `gt config default-agent <名>`） |
 | node | v24.0.0 | — | 满足要求 | pi / opencode / codex 均装在其下 |
 
 ### 结论
@@ -204,10 +204,15 @@ gt rig list
 ```
 
 > [!CAUTION]
-> **`rigs.json` 不是注册数据源，不能用来验证注册是否成功。**
+> **验证 gt 自身的 rig 注册，一律以 `gt rig list` 为准。**
 > 实测：`gt rig list` 已能看到 `collab_rig`，但同一时刻 `cat rigs.json`
-> 可能仍是空的或只有 `{}`（具体内容取决于版本与注册路径）。
-> 验证注册**一律以 `gt rig list` 为准**。
+> 可能仍是空的或只有 `{}`（落盘时机与版本相关）。
+>
+> ⚠️ 但 `rigs.json` **并非可删之物**：本手册的任务总线桥脚本
+> `scripts/devops/gastown_git_task_bridge.sh` 依赖 `<town>/rigs.json`
+> 的 `.rigs[<rig>].beads.prefix` 来解析 beads 前缀（见脚本第 85 行）。
+> 若该文件缺失/为空，`bridge dispatch` 会报「rig 'xxx' 未在 rigs.json 中注册」。
+> 结论：**gt 注册看 `gt rig list`；桥脚本可用性看 `rigs.json`**，两者不矛盾。
 
 > [!TIP]
 > 若之前删过 rig 目录但注册残留，`gt rig add` 可能因目标目录非空而报错。
@@ -218,7 +223,7 @@ gt rig list
 > gt rig list                     # 看是否仍注册
 > gt rig remove collab_rig --force   # 有残留注册时先强制移除
 > ls -la collab_rig 2>/dev/null   # 确认目录是否真的没了
-> # 若目录仍在且确定是本 rig 的，可直接快作用已有目录：
+> # 若目录仍在且确定是本 rig 的，可直接复用该目录：
 > # gt rig add collab_rig "file:///.../repo" --prefix collab --adopt
 > ```
 >
@@ -276,7 +281,7 @@ gt polecat identity list collab_rig # 期望：3 identity bead(s)
 > gt 采用「持久化 polecat」模型：当目标工位**没有活跃会话**时，
 > `gt sling <bead> <rig>/polecats/<名字>` 里的 `<名字>` **会被忽略**，
 > gt 改为复用 rig 内**第一个 idle 工位**（`FindIdlePolecat()`，
-> 见 `internal/polecat/manager.go:2153` 与 `internal/cmd/polecat_spawn.go:142`）。
+> 见 `internal/polecat/manager.go:2153` 与 `internal/cmd/polecat_spawn.go:145`）。
 >
 > 实测后果：把只读验收任务派给 `tester`，结果被 **dev1** 领走，角色约束完全错位。
 
@@ -654,9 +659,9 @@ polecats/dev1/collab_rig/CLAUDE.md      ← 第一层（gt 生成的角色模板
 polecats/dev1/collab_rig/AGENTS.md      ← 业务仓库内的通用说明（若有）
 polecats/dev1/AGENTS.md                 ← ★ 第二层：dev1 专属约束（本手册）
 polecats/AGENTS.md
-collab_rig/AGENTS.md                    ← rig 级（bd 工作流说明）
+collab_rig/AGENTS.md                    ← rig 级（可选，本机未创建）
 gt_ai/AGENTS.md                         ← town 级
-~/.pi/agent/AGENTS.md                   ← 机器级
+~/.pi/agent/AGENTS.md                   ← 机器级（可选，本机未创建）
 ```
 
 越靠下的文件越"贴近当事人"，实际效果是**角色专属约束（第二层）优先于项目通用说明**。
@@ -830,10 +835,10 @@ gt polecat status collab_rig/tester
 `gt polecat status <rig>/<工位>` 的输出中关注 `State:` 与 `Issue:` 两行：
 
 ```text
-  Polecat: collab_rig/dev1
+Polecat: collab_rig/dev1
 
-    State:         working
-    Issue:         collab-feat-pow
+  State:         working
+  Issue:         collab-feat-pow
 ```
 
 > [!CAUTION]
@@ -867,7 +872,7 @@ cd collab_rig && bd list --status open
 > [!CAUTION]
 > `gt peek` 的参数**必须是完整的 `<rig>/<工位>`**（如
 > `gt peek collab_rig/dev1`）。
-> 写 `gt peek dev1` 会报 `invalid address format` / 直接输出 usage；
+> 写 `gt peek dev1` 会报 `not in a rig directory. Use full address format: gt peek <rig>/<polecat>`；
 > 写 `gt peek collab_rig/polecats/dev1`（多了 `polecats/` 层）也会报错。
 
 ### 8.5 等待完成与合并
@@ -876,7 +881,7 @@ Agent 完成后会执行 `gt done` → 进入该 rig 的 **merge queue** → 由
 
 ```bash
 cd "$TOWN"
-gt mq list collab_rig          # 合并队列（注意：空队列返回 null）
+gt mq list collab_rig          # 合并队列（人类可读表格；空队列只显示表头）
 gt convoy list                 # 批次整体进度
 
 # 业务仓库侧确认
@@ -992,8 +997,8 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 |------|------|------|
 | push 后无任何 `remote:` 回显 | 任务单未命名为 `*.task.md`，或路径未被 `git diff/ls-tree` 命中 | 确认文件名后缀；`git ls-tree -r --name-only HEAD \| rg '\.task\.md$'` |
 | `[错误] 任务单缺少 rig 字段` | frontmatter 缺字段 | 补齐 `id` / `title` / `rig` |
-| `[错误] rig 'xxx' 未在 rigs.json 中注册` | rig 名拼错或未 `gt rig add` | `gt rig list` 确认（⚠ **不要用 `cat rigs.json` 判断**，见下条） |
-| **`gt rig list` 有 rig，但 `rigs.json` 是空的** | `rigs.json` **不是注册数据源** | 验证注册一律用 `gt rig list`，不要看 `rigs.json` |
+| `[错误] rig 'xxx' 未在 rigs.json 中注册` | rig 名拼错，或桥脚本在 town 根找不到 `rigs.json` | `gt rig list` 确认 rig 已注册；再确认 town 根存在 `rigs.json`（**桥脚本确实读 `<town>/rigs.json` 取 prefix，不要删它**） |
+| **`gt rig list` 有 rig，但 `rigs.json` 是空的** | gt 自身注册与 `rigs.json` 落盘时机不同步（历史现象） | **验证 gt 注册**一律用 `gt rig list`；但 `rigs.json` 是**桥脚本取 beads prefix 的依赖**，不可删。若为空会导致 bridge 派发报「未在 rigs.json 中注册」 |
 | **`gt rig add` 因目标目录非空而失败** | 之前 `gt rig remove` 未加 `--force`，目录删了但注册/残留没清 | `gt rig remove <rig> --force`；或用 `--adopt` 接管目录 |
 | **`gt session start <rig>/dev1` 报 `Polecat 'dev1' not found`** | 只做了 `polecat identity add`，**没有 worktree** | 改用 `gt polecat pool-init <rig>`（见 5.3，已补全） |
 | **自定义工位名后建出来的是 `obsidian/quartz/...`** | 未在 rig `config.json` 里写 `polecat_names` | 写入 `jq '.polecat_names=["dev1","dev2","tester"]' config.json` 后再 `pool-init` |
@@ -1001,7 +1006,7 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 | `identity list` 恒为空 | 长前缀 rig 身份 bug | 见 `20261020-gastown-long-prefix-rig-agent-identity-patch.md` |
 | Agent 不遵守"不要改测试" | 该工位的 `AGENTS.md` 未放对位置 | 确认文件在 `polecats/<角色>/AGENTS.md`（**不在 worktree 内**） |
 | `gt mq list` 返回 `null` | 空队列的 JSON 表达 | 脚本里做容错，`jq -r '.[]?'` |
-| Agent 干完活在那干等 | 未执行 `gt done` | 属 Posecat 模板已覆盖的情形；检查会话是否收不到 mail（`gt hooks sync`） |
+| Agent 干完活在那干等 | 未执行 `gt done` | 属 Polecat 模板已覆盖的情形；检查会话是否收不到 mail（`gt hooks sync`） |
 | 派发报 `bead is already being slung` | 同 bead 并发派发 | 等待当前派发完成再重试 |
 | **`gt` 报 `not in a Gas Town workspace`** | 当前目录不在 town/rig 内 | 先 `cd /home/vire/work_luli/gt_work/gt_ai`（或 rig 目录）再执行 |
 | **派给 A，结果 B 做了** | 目标工位无活跃会话，gt 复用第一个 idle 工位 | **先 `gt session start <rig>/<工位>`**，再 `gt sling`（见 5.3.1） |
@@ -1021,7 +1026,7 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 
 #### 复位工位状态（清理 ghost 工位）
 
-当 `gt polecat identity list <rig>` 里出现你不认识的工位、状态停畵在 `spawning` 却无会话时：
+当 `gt polecat identity list <rig>` 里出现你不认识的工位、状态停留在 `spawning` 却无会话时：
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -1091,7 +1096,7 @@ gt session list
 | **Agent 端到端执行** | `gt peek collab_rig/tester` | 实测看到 tester 执行 `bd update ... --status=in_progress` + 读 `scripts/run-tests.sh` ✔ |
 | `gt polecat identity remove` 可用性 | 实测去除残留身份 | 报 `identity bead ... not found`（已知缺陷），改用 `bd delete --force` ✔ |
 
-### 2026-10-20 23:10 从零重建全流程回归（逐节核对「文档描述 ↔ 真实执行」）
+### 2026-10-20 21:16 从零重建全流程回归（逐节核对「文档描述 ↔ 真实执行」）
 
 本轮把协作环境**清场到零**（移除 rig / 目录 / tasks.git / 派发记录），严格按章节顺序重跑，逐节核对。实测结果：
 
@@ -1100,7 +1105,7 @@ gt session list
 | 一 | 本机四件版本与上游核对 | gt `1.2.1` / bd `1.0.0` / dolt `2.5.0` / pi `1.3.0`，均与文档一致 ✔（补充 GitHub API 限流说明） |
 | 四 | `gt status` / `gt config default-agent` | 正常 ✔（并说明首轮 `identity list` 必然报 rig not found） |
 | 5.1 | 业务仓库无 `pow`、基线干净 | ✔ |
-| 5.2 | 首次全新 `gt rig add` | 退出码 0，`gt rig list` 可见 ✔（**发现 `rigs.json` 非数据源，验证口径已改**） |
+| 5.2 | 首次全新 `gt rig add` | 退出码 0，`gt rig list` 可见 ✔（**发现 `rigs.json` 非 gt 注册数据源，验证口径已改**） |
 | 5.3 | 只 `identity add` → 无 worktree | 确认 `session start` 必报 `Polecat not found`；**补上 `pool-init` + `polecat_names`** ✔ |
 | 5.3.1 | 工位上线后精确派发 | 三工位 ●；不再错位 ✔ |
 | 5.4 | `gt down && gt up` | 工位自动恢复在线 ✔ |
@@ -1113,6 +1118,32 @@ gt session list
 | 8.6 | tester 验收闭环 | 117 tests OK + 独立探针 12/12 + 改动范围仅 `calc.py`；**tester 独立发现 origin/main 未合并** ✔ |
 | 十 | 排错表 | 新增 12 类真实问题（pool-init / rigs.json / peek 格式 / Hook 口径 / MQ ID 截断 / refinery 跑偏 / .beads 权限 / GitHub 限流 等） |
 
+### 2026-10-20 21:44 独立子 agent 全量复核（`pi -p` 一次性实例，只读）
+
+为避免“作者自证”，用独立 `pi -p --no-session --tools read,bash` 实例作为**盲审子 agent**（无共享上下文），对本文档做三层复核：L1 逐条核对代码块命令与参数、L2 动态只读复现、L3 逻辑闭环。
+
+| 层 | 检查项 | 通过 | 不一致 | 无法验证/环境演进 |
+|----|--------|------|--------|-------------------|
+| L1 静态一致性 | 35 | 32 | 2 | 1（GitHub API 限流） |
+| L2 动态只读 | 18 | 12 | 0 | 6（环境演进/需写操作） |
+| L3 逻辑闭环 | 7 | 6 | 1 | 0 |
+| **合计** | **60** | **50** | **8** | **7** |
+
+子 agent 独立发现并经本 agent 复现确认的 8 处不一致（**均已修正**）：
+
+| ID | 位置 | 问题 | 严重度 | 修正 |
+|----|------|------|--------|------|
+| I1 | frontmatter / §12 / 变更记录 | `updated` 为未来时间（23:10，晚于文档 mtime 21:16） | 低 | 全部改为真实时间（21:16 / 21:44） |
+| I2 | §1 表格 opencode 行 | `gt config agent <role> opencode` 语法不存在 | **中** | 改为 `gt config agent set <名> opencode` / `gt config default-agent <名>` |
+| I3 | §8.5 行 879 | “空队列返回 null”仅在 `--json` 下成立 | 低 | 注释改为“人类可读表格；空队列只显示表头” |
+| I4 | §8.4 CAUTION | `gt peek dev1` 报错文案引错（那是 `polecat status` 的文案） | 低 | 改为 `not in a rig directory. Use full address format: gt peek <rig>/<polecat>` |
+| I5 | §5.3.1 | 源码行号 `polecat_spawn.go:142` 漂移 | 低 | 实测为 `:145`，已改 |
+| I6 | 221 / 1004 / 1024 行 | 3 处错别字（快作用 / Posecat / 停畵） | 低 | 改为 复用 / Polecat / 停留 |
+| I7 | §8.3 示例输出 | `Polecat:` / `State:` 缩进不符实测 | 低 | 改为无缩进 + 2 空格（`cat -A` 实测） |
+| I8 | §7.2 加载链 | 列出本机不存在的 `collab_rig/AGENTS.md`、`~/.pi/agent/AGENTS.md` | 低 | 标注“（可选，本机未创建）”；并明确桥脚本确实依赖 `<town>/rigs.json` |
+
+子 agent 同时确认：主 agent 此前所述 13 项修正（`pool-init`、bare HEAD=`main`、钩子 `GIT_DIR`、Hook 查看口径、refinery 跑偏判定与兜底等）**经独立复核均成立**；§8.5 的 MR 由 `ready` 变为 `merged/closed`、MR 队列变空属于**环境演进**（refinery 最终完成合并，主干已有 `2b12202`），**不计为文档缺陷**。
+
 ---
 
 ## 📝 变更记录
@@ -1120,5 +1151,6 @@ gt session list
 | 时间 | 变更 |
 |------|------|
 | 2026-10-20 19:20 | 初版：版本核查结论、git 任务通道、三层提示词约束、端到端事例、协作流程全景 |
-| 2026-10-20 21:40 | **按真实演练结果修正**：① 新增 5.3.1「工位必须在线」（否则指定目标被忽略，任务错派）；② 6.1 补 bare 仓库 HEAD 必须指向 `main`；③ 6.2 钩子改用 `git --git-dir` + `unset GIT_*`（否则 `GIT_DIR` 污染导致派发失败）；④ 第十节新增 8 类真实故障与「复位工位状态」；⑤ 第十二节补全真实演练验证记录；⑥ 同步修正桥脚本 `install-hook`（HEAD 与 git 环境清理） |
-| 2026-10-20 23:10 | **从零重建全流程回归后的大修**：① 5.3 补 `pool-init` 与 `polecat_names`（只 `identity add` 无 worktree，`session start` 必失败）；② 5.2 验证口径由 `rigs.json` 改为 `gt rig list`，并补 `--force`/`--adopt` 排错；③ 8.3 Hook 查看改为 `gt polecat status`（`identity list` 不输出 Hook，`gt hook show` 报 no beads database）；④ 8.4 `gt peek` 参数格式；⑤ 8.5 补 `mq list` ID 截断与 refinery 跑偏判定/兜底；⑥ 第四节首轮 `identity list` 预期报错说明；⑦ 排错表新增 12 类；⑧ 新增全流程回归验证记录 |
+| 2026-10-20 20:50 | **按真实演练结果修正**：① 新增 5.3.1「工位必须在线」（否则指定目标被忽略，任务错派）；② 6.1 补 bare 仓库 HEAD 必须指向 `main`；③ 6.2 钩子改用 `git --git-dir` + `unset GIT_*`（否则 `GIT_DIR` 污染导致派发失败）；④ 第十节新增 8 类真实故障与「复位工位状态」；⑤ 第十二节补全真实演练验证记录；⑥ 同步修正桥脚本 `install-hook`（HEAD 与 git 环境清理） |
+| 2026-10-20 21:16 | **从零重建全流程回归后的大修**：① 5.3 补 `pool-init` 与 `polecat_names`（只 `identity add` 无 worktree，`session start` 必失败）；② 5.2 验证口径由 `rigs.json` 改为 `gt rig list`，并补 `--force`/`--adopt` 排错；③ 8.3 Hook 查看改为 `gt polecat status`（`identity list` 不输出 Hook，`gt hook show` 报 no beads database）；④ 8.4 `gt peek` 参数格式；⑤ 8.5 补 `mq list` ID 截断与 refinery 跑偏判定/兜底；⑥ 第四节首轮 `identity list` 预期报错说明；⑦ 排错表新增 12 类；⑧ 新增全流程回归验证记录 |
+| 2026-10-20 21:44 | **独立子 agent 盲审复核后的修正**：① frontmatter `updated` 及 §12 标题/变更记录的未来时间改为真实时间；② §1 `gt config agent` 语法修正为 `gt config agent set` / `gt config default-agent`；③ §8.5 `mq list` 空队列说明限定为 `--json` 口径；④ §8.4 `gt peek` 报错文案改为实测原文；⑤ §5.3.1 源码行号 142→45；⑥ 修正 3 处错别字；⑦ §8.3 示例输出缩进对齐实测；⑧ §7.2 加载链标注可选文件，并澄清桥脚本对 `rigs.json` 的依赖；⑨ 新增「独立子 agent 全量复核」验证记录（60 项：50 通过 / 8 不一致均已修 / 7 无法验证） |
