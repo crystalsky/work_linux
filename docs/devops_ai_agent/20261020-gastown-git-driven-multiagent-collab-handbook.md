@@ -4,8 +4,8 @@ type: note
 status: active
 scope: 
 created: 2026-10-20 19:20:00
-updated: 2026-10-20 21:40:00
-summary: "以「git push 任务单」作为唯一任务入口，把任务自动转化为 Gas Town 的 bead 并派发给 mayor/dev/tester 四类工位；给出三层提示词约束模型（内置角色模板 / 工位 AGENTS.md / 任务单正文）与端到端协作流程；已按真实演练修正关键坑（工位必须先行在线、bare 仓库 HEAD、钩子 GIT_DIR 污染），含可复现脚本与实测记录。"
+updated: 2026-10-20 23:10:00
+summary: "以「git push 任务单」作为唯一任务入口，把任务自动转化为 Gas Town 的 bead 并派发给 mayor/dev/tester 四类工位；给出三层提示词约束模型（内置角色模板 / 工位 AGENTS.md / 任务单正文）与端到端协作流程；已按从零重建的完整回归实测修正全部与执行不一致之处（工位必须 pool-init 后才可上线、bare 仓库 HEAD、钩子 GIT_DIR 污染、Hook 查看口径、refinery 跑偏等），含可复现脚本与实测记录。"
 keywords: [linux, gastown, multi-agent, git, prompt-engineering, beads, collaboration, pi]
 verification: "scripts/devops/gastown_git_task_bridge.sh dispatch tasks/xxx.task.md -n；git push 后 gt polecat identity list collab_rig；gt convoy list"
 ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改时请同步更新 updated 时间。本机所有示例路径以 gt_ai / collab_rig 为准。"
@@ -62,17 +62,27 @@ ai_rules: "保持客观技术风格，代码块必须标注语言类型。修改
 export PATH="$HOME/.local/bin:$PATH"
 gt --version; bd version; dolt version; pi --version
 
-# 上游最新版本（本机直连可用）
+# 上游最新版本（本机直连可用；注意：未认证调用有速率限制，
+# 连续查询可能返回空，须间隔重试或逐个查询）
 for repo in gastownhall/gastown dolthub/dolt; do
   printf '%-24s ' "$repo"
-  curl -s --max-time 15 "https://api.github.com/repos/$repo/releases/latest" | jq -r '.tag_name'
-done
+  curl -s --max-time 15 "https://api.github.com/repos/$repo/releases/latest" \
+    | jq -r '.tag_name // "(本次被限流/无返回，稍后重试)"'
+  sleep 3
+ done
 
 # 版本强绑定的权威依据
 rg -n "steveyegge/beads" \
   "$HOME/.work_linux_working/downloads/src/gtsrc/github.com/steveyegge/gastown@v1.2.1/go.mod"
 # → github.com/steveyegge/beads v1.0.0
 ```
+
+> [!CAUTION]
+> **未认证的 GitHub API 有速率限制（60 次/小时）。**
+> 连续两次请求时，第二次很可能**静默返回空**（`jq` 输出空白），
+> 容易被误判为“查不到”。命令里已加 `sleep 3` 与 `// "..."` 兑底；
+> 若仍为空，等几分钟重试，或改用已认证通道
+> （本机 `gh` 已安装，但需先 `gh auth login`）。
 
 ---
 
@@ -146,8 +156,16 @@ cd "$TOWN"
 
 gt status                     # 期望：Dolt/deacon/mayor/witness/refinery 全部 ●
 gt config default-agent       # 期望：pi
+
+# ⚠ 首次搭建时 rig 尚未注册，下面这条会报 `Error: rig 'collab_rig' not found`。
+#   —— 这是**预期**的，请先完成第 5 节，再回到这条命令确认：
 gt polecat identity list collab_rig
 ```
+
+> [!NOTE]
+> 前置检查分两段：`gt status` / `gt config default-agent` 属于「装完就能跑」；
+> `gt polecat identity list collab_rig` 依赖第 5 节已建好 rig 与工位。
+> 首轮搭建时它报 `rig ... not found` 是**正常**的，不要当成故障。
 
 > [!TIP]
 > `gt status` 里各服务后面应显示 `[pi/huangza-openai-deepseek-flash]`。
@@ -180,21 +198,70 @@ cd /home/vire/work_luli/gt_work/gt_ai
 
 gt rig add collab_rig "file:///home/vire/work_luli/gt_work/person_demo/repo" --prefix collab
 
-cat rigs.json | jq .
-# 期望看到 collab_rig → git_url 指向 person_demo/repo，beads.prefix = "collab"
+# ✓ 确认口径：用 gt rig list（而非 rigs.json）
+gt rig list
+# 期望：collab_rig 一行，状态 ●，路径指向 person_demo/repo
 ```
+
+> [!CAUTION]
+> **`rigs.json` 不是注册数据源，不能用来验证注册是否成功。**
+> 实测：`gt rig list` 已能看到 `collab_rig`，但同一时刻 `cat rigs.json`
+> 可能仍是空的或只有 `{}`（具体内容取决于版本与注册路径）。
+> 验证注册**一律以 `gt rig list` 为准**。
+
+> [!TIP]
+> 若之前删过 rig 目录但注册残留，`gt rig add` 可能因目标目录非空而报错。
+> 排错顺序：
+>
+> ```bash
+> cd /home/vire/work_luli/gt_work/gt_ai
+> gt rig list                     # 看是否仍注册
+> gt rig remove collab_rig --force   # 有残留注册时先强制移除
+> ls -la collab_rig 2>/dev/null   # 确认目录是否真的没了
+> # 若目录仍在且确定是本 rig 的，可直接快作用已有目录：
+> # gt rig add collab_rig "file:///.../repo" --prefix collab --adopt
+> ```
+>
+> ⚠ `gt rig remove` **不带 `--force`** 时，因 refinery/witness 会话在跑会**静默无效**：
+> 目录可能已被删、注册仍在，下次 `gt rig add` 就会出怪象。
+> 直接加 `--force` 最稳当。
 
 ### 5.3 创建 3 个工种工位
 
+> [!CAUTION]
+> **必须用 `gt polecat pool-init` 创建工位，只跑 `gt polecat identity add` 是不够的。**
+> `identity add` 只写一条「身份 bead」，**不会创建 worktree**；
+> 随后 `gt session start` 会报 `Error: Polecat 'dev1' not found`，
+> `gt rig add` 之后 `polecat identity list` 能看到三个名字，却无法上线。
+> 这是本手册早期版本的真实缺陷（已实测确认），切勿只做 `identity add`。
+
+工位的**名字与数量**由 rig 的 `config.json` 里 `polecat_names` 决定。
+不指定时，会按 rig 的“名称池主题”自动生成（本机 rig 为 `minerals` 主题，
+曾生成 `obsidian` / `quartz` / `jasper` / `onyx`），默认池大小 4。
+
 ```bash
+cd /home/vire/work_luli/gt_work/gt_ai/collab_rig
+
+# ① 指定三个工种名（不指定则用自动生成的名字）
+jq '.polecat_names = ["dev1","dev2","tester"]' config.json > /tmp/cfg.json \
+  && mv /tmp/cfg.json config.json
+
+# ② 先预览，再真实创建（同时建身份 bead + worktree，IDLE 可立即接活）
 cd /home/vire/work_luli/gt_work/gt_ai
+gt polecat pool-init collab_rig --dry-run
+gt polecat pool-init collab_rig
 
-gt polecat identity add collab_rig dev1
-gt polecat identity add collab_rig dev2
-gt polecat identity add collab_rig tester
-
-gt polecat identity list collab_rig
+# ③ 确认
+cd /home/vire/work_luli/gt_work/gt_ai
+gt polecat list collab_rig          # 期望：dev1 / dev2 / tester，均 idle
+gt polecat identity list collab_rig # 期望：3 identity bead(s)
 ```
+
+> [!NOTE]
+> 创建过程中出现的
+> `⚠ Warning: SetAgentState ... issue not found` 是已知的**非致命**警告
+> （identity bead 在 rig 库、状态同步走了 hq 库），不影响工位可用性；
+> 用 `gt polecat list collab_rig` 确认状态即可。
 
 > [!IMPORTANT]
 > **rig 前缀长度不影响身份功能的前提**是已应用「长前缀 rig 身份修复」补丁。
@@ -237,6 +304,12 @@ gt status
 ```
 
 新注册的 rig 需要重启一次，Witness / Refinery 才会接管该 rig 的巡逻与合并队列。
+
+> [!TIP]
+> `gt up` 会**连带把持久化工位重新拉起**：`pool-init` 创建的工位
+> 会在重启后自动回到 `●` 在线（无需重复 `gt session start`）。
+> 实测：`gt down` 后 `gt up`，`gt status` 中三工位均回到
+> `● [pi/huangza-openai-deepseek-flash]`。
 
 ---
 
@@ -713,6 +786,16 @@ git push origin HEAD:main
 
 **push 时钩子会立即回显处理过程**（实测输出）：
 
+> [!WARNING]
+> 回显中会出现大量
+> `Warning: /home/vire/work_luli/gt_work/gt_ai/collab_rig/.beads has permissions 0755 (recommended: 0700)`。
+> 这是**非致命警告**，不影响派发；如需消除，一次性执行：
+>
+> ```bash
+> chmod 700 /home/vire/work_luli/gt_work/gt_ai/collab_rig/.beads
+> ```
+>
+
 ```text
 remote: ==> 任务单来自 git push: tasks/feat-pow.task.md
 remote: [桥] 任务单 : feat-pow  →  bead collab-feat-pow
@@ -738,30 +821,54 @@ TOWN=/home/vire/work_luli/gt_work/gt_ai
 
 cd "$TOWN"
 gt convoy list                 # 派发自动创建的批次
-gt polecat identity list collab_rig   # 看各工位是否已挂上 Hook
+
+# 查看各工位当前挂了什么任务（这是可靠口径）
+gt polecat status collab_rig/dev1
+gt polecat status collab_rig/tester
 ```
 
-`identity list` 中应看到对应工位的 Hook 指向新 bead，例如：
+`gt polecat status <rig>/<工位>` 的输出中关注 `State:` 与 `Issue:` 两行：
 
 ```text
-  ○ dev1       spawning [worktree]
-    Hook: collab-feat-pow
-  ○ tester     spawning [worktree]
-    Hook: collab-verify-pow
+  Polecat: collab_rig/dev1
+
+    State:         working
+    Issue:         collab-feat-pow
 ```
+
+> [!CAUTION]
+> **不要用 `gt polecat identity list collab_rig` 查 Hook。**
+> 实测它的输出只有状态，**不包含 Hook / Issue 行**：
+>
+> ```text
+>   ● dev1  spawning [worktree]
+>   ● tester  spawning [worktree]
+>   3 identity bead(s)
+> ```
+>
+> 另：`gt hook show <rig>/<工位>` 目前在本机会报
+> `Error: listing hooked beads: ... no beads database found`（实测 bug），
+> 不要把它当作查看口径。验证“任务挂到谁头上”请用 `gt polecat status`。
 
 ### 8.4 观察 Agent 干活
 
 ```bash
 cd "$TOWN"
 
-gt feed                        # 实时事件流
-gt peek dev1 -n 40             # 查看 dev1 会话最近输出
-gt peek tester -n 40           # 查看 tester 会话最近输出
+gt feed                        # 实时事件流（会持续滚动，Ctrl-C 退出）
+gt peek collab_rig/dev1   -n 40   # 查看 dev1 会话最近输出
+gt peek collab_rig/tester -n 40   # 查看 tester 会话最近输出
+gt peek collab_rig/refinery -n 20 # 查看 refinery 合并情况
 
 # 任务台账
 cd collab_rig && bd list --status open
 ```
+
+> [!CAUTION]
+> `gt peek` 的参数**必须是完整的 `<rig>/<工位>`**（如
+> `gt peek collab_rig/dev1`）。
+> 写 `gt peek dev1` 会报 `invalid address format` / 直接输出 usage；
+> 写 `gt peek collab_rig/polecats/dev1`（多了 `polecats/` 层）也会报错。
 
 ### 8.5 等待完成与合并
 
@@ -778,9 +885,48 @@ git log --oneline -5
 rg -n "def pow" calc.py        # 确认函数已落地
 ```
 
+> [!TIP]
+> `gt mq list` 的表格会**截断 MR ID**（只能看到 `collab-wisp-` 这类前缀）。
+> 拿完整 ID 看详情：先从 `bd list --type=task --status=open` 或
+> `gt convoy status <id>` 找到完整 wisp ID，再执行：
+>
+> ```bash
+> cd "$TOWN"
+> gt mq status collab-wisp-bgz   # 完整 ID，不能只写前缀（否则报 ambiguous）
+> ```
+
 > [!WARNING]
 > 确认「代码真的合入主干」要看**主干 `git log`**，不能只看 bead 状态。
 > 规则：`bead CLOSED` ≠ 代码已合入，须 `bd show <bead>` + 主干 `git log` 交叉确认。
+
+> [!CAUTION]
+> **refinery 是 LLM Agent，可能长时间不合并、甚至跑偏（实测）。**
+> 实测中 refinery 在一个无关的 git 环境问题上反复探索
+> （甚至用 `strings gt | grep GUARD` 反向工程二进制），
+> 输出 500+ 行仍未处理队列，MR 停留在 `ready`。
+>
+> **判定 refinery 卡住的方法**：
+>
+> ```bash
+> cd "$TOWN"
+> gt mq list collab_rig                                    # MR 长期 ready
+> gt peek collab_rig/refinery -n 30                        # 看它是否在做无关的事
+> gt polecat status collab_rig/refinery 2>/dev/null | rg "State:"
+> ```
+>
+> **人工兜底**（当 refinery 不干活时，直接在业务仓库合并该分支）：
+>
+> ```bash
+> REPO=/home/vire/work_luli/gt_work/person_demo/repo
+> cd "$REPO"
+> git fetch <rig bare repo 路径> polecat/dev1-xxxx:tmp-mr   # 或按 MR 里的 Branch
+> git checkout main && git merge --no-ff tmp-mr
+> git push origin main
+> ```
+>
+> 注意：`gt mq retry <rig> <mr-id>` 已标记为 deprecated
+> （提示 “The Refinery agent handles retries autonomously via beads”），
+> 实测调用后 MR 也不会立即合并，不要依赖它推动进度。
 
 ### 8.6 tester 的验收闭环
 
@@ -846,7 +992,11 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 |------|------|------|
 | push 后无任何 `remote:` 回显 | 任务单未命名为 `*.task.md`，或路径未被 `git diff/ls-tree` 命中 | 确认文件名后缀；`git ls-tree -r --name-only HEAD \| rg '\.task\.md$'` |
 | `[错误] 任务单缺少 rig 字段` | frontmatter 缺字段 | 补齐 `id` / `title` / `rig` |
-| `[错误] rig 'xxx' 未在 rigs.json 中注册` | rig 名拼错或未 `gt rig add` | `cat <town>/rigs.json \| jq '.rigs \| keys'` |
+| `[错误] rig 'xxx' 未在 rigs.json 中注册` | rig 名拼错或未 `gt rig add` | `gt rig list` 确认（⚠ **不要用 `cat rigs.json` 判断**，见下条） |
+| **`gt rig list` 有 rig，但 `rigs.json` 是空的** | `rigs.json` **不是注册数据源** | 验证注册一律用 `gt rig list`，不要看 `rigs.json` |
+| **`gt rig add` 因目标目录非空而失败** | 之前 `gt rig remove` 未加 `--force`，目录删了但注册/残留没清 | `gt rig remove <rig> --force`；或用 `--adopt` 接管目录 |
+| **`gt session start <rig>/dev1` 报 `Polecat 'dev1' not found`** | 只做了 `polecat identity add`，**没有 worktree** | 改用 `gt polecat pool-init <rig>`（见 5.3，已补全） |
+| **自定义工位名后建出来的是 `obsidian/quartz/...`** | 未在 rig `config.json` 里写 `polecat_names` | 写入 `jq '.polecat_names=["dev1","dev2","tester"]' config.json` 后再 `pool-init` |
 | 重复 push 同一任务单没有重复派活 | **正常**（幂等保护） | 需要重发用 `--redispatch` |
 | `identity list` 恒为空 | 长前缀 rig 身份 bug | 见 `20261020-gastown-long-prefix-rig-agent-identity-patch.md` |
 | Agent 不遵守"不要改测试" | 该工位的 `AGENTS.md` 未放对位置 | 确认文件在 `polecats/<角色>/AGENTS.md`（**不在 worktree 内**） |
@@ -860,7 +1010,14 @@ gt sling collab-xxxx collab_rig/polecats/dev1 --args="修复：负数指数应�
 | **clone 后工作区为空** | bare 仓库 HEAD 指向 `master`，推的是 `main` | `git -C "$BUS" symbolic-ref HEAD refs/heads/main` |
 | **push 后 `gt sling` 报一堆 usage，派发失败** | 钩子的 `GIT_DIR` 污染 gt 子进程 | 钩子必须 `unset GIT_*` + `git --git-dir`（脚本已内置） |
 | `⚠ Warning: could not sync agent_state column ... issue not found` | identity bead 在 rig 库、同步走了 hq 库（补丁副作） | **可忽略**，不影响派发与执行；工位状态可用 `gt session list` 交叉确认 |
-| `Warning: no route found for prefix "gt-" ... falling back to ...` | 非 rig 前缀 bead 的回退提示 | **可忽略**，gt 已回退到 rig 库 |
+| **`gt polecat identity list` 看不到 Hook / Issue** | 该子命令**不输出 Hook 行**（非 bug） | 用 `gt polecat status <rig>/<工位>` 看 `State:` / `Issue:` |
+| **`gt hook show <rig>/<工位>` 报 `no beads database found`** | 上游 bug（在 town/rig 目录内均复现） | 不要用它查看口径，改用 `gt polecat status` |
+| **`gt peek dev1` 报 usage / 格式错** | `gt peek` 需要完整 `<rig>/<工位>` | 写 `gt peek collab_rig/dev1`（也不能多写 `polecats/`） |
+| **`gt mq list` 的 MR ID 被截断** | 表格列宽限制 | 用完整 ID 调 `gt mq status <完整ID>`（只写前缀会报 ambiguous） |
+| **MR 长期停 `ready`、refinery 不合并** | refinery（LLM Agent）卡住/跑偏（实测） | `gt peek collab_rig/refinery -n 30` 判定；兜底：手工在业务仓库 merge 该分支 |
+| **`gt mq retry` 提示 deprecated 且不生效** | 已废弃（改为 refinery 自主处理） | 不要依赖它推动；改用人工兜底合并 |
+| **`.beads has permissions 0755` 警告刷屏** | 目录权限偏宽（非致命） | `chmod 700 <rig>/.beads` |
+| **GitHub Release API 连续请求返回空** | 未认证限流（60 次/小时） | 命令间加 `sleep`，或等几分钟重试，或 `gh auth login` |
 
 #### 复位工位状态（清理 ghost 工位）
 
@@ -925,7 +1082,7 @@ gt session list
 | 钩子语法 | `bash -n <bare>/hooks/post-receive` | 通过 ✔ |
 | 角色上下文机制 | pi 文档 + worktree 实测 | pi 从工作目录向上加载 `AGENTS.md`；gt 生成 `CLAUDE.md` 于 worktree ✔ |
 | **gt 目录依赖** | 在 town 外执行 `gt` | 报 `not in a Gas Town workspace` ✔（文档已强调 cd） |
-| **重复 `gt rig add` 幂等** | 再次 `gt rig add collab_rig ...` | 提示 `rig already exists` 但**退出码 0**，`rigs.json` 未被改动 ✔ |
+| **重复 `gt rig add` 幂等** | 再次 `gt rig add collab_rig ...` | 提示 `rig already exists` 但**退出码 0** ✔（注：该提示不以 `rigs.json` 为判据） |
 | **重复 `gt polecat identity add` 幂等** | 再次 add `dev1` | bead 未重复（仍 1 条）✔ |
 | **bare 仓库 HEAD 修正** | `install-hook` 后 `git clone` | `HEAD` 指向 `refs/heads/main`，clone 后正确检出 `main` ✔ |
 | **钩子环境修正（GIT_DIR）** | 真实 `git push` 触发派发 | 修正前：`fatal: 不是 Git 仓库：'.'`→ 派发失败；修正后：`✓ Work attached to hook` ✔ |
@@ -933,6 +1090,28 @@ gt session list
 | **角色约束真实生效** | 在三个工位各自跑 `pi -p` 提问 | dev1 → “不能改 `test_*.py`”；tester → “对实现文件只读”；dev2 → “不得 `git push`” ✔ |
 | **Agent 端到端执行** | `gt peek collab_rig/tester` | 实测看到 tester 执行 `bd update ... --status=in_progress` + 读 `scripts/run-tests.sh` ✔ |
 | `gt polecat identity remove` 可用性 | 实测去除残留身份 | 报 `identity bead ... not found`（已知缺陷），改用 `bd delete --force` ✔ |
+
+### 2026-10-20 23:10 从零重建全流程回归（逐节核对「文档描述 ↔ 真实执行」）
+
+本轮把协作环境**清场到零**（移除 rig / 目录 / tasks.git / 派发记录），严格按章节顺序重跑，逐节核对。实测结果：
+
+| 手册节 | 验证项 | 结果 |
+|--------|--------|------|
+| 一 | 本机四件版本与上游核对 | gt `1.2.1` / bd `1.0.0` / dolt `2.5.0` / pi `1.3.0`，均与文档一致 ✔（补充 GitHub API 限流说明） |
+| 四 | `gt status` / `gt config default-agent` | 正常 ✔（并说明首轮 `identity list` 必然报 rig not found） |
+| 5.1 | 业务仓库无 `pow`、基线干净 | ✔ |
+| 5.2 | 首次全新 `gt rig add` | 退出码 0，`gt rig list` 可见 ✔（**发现 `rigs.json` 非数据源，验证口径已改**） |
+| 5.3 | 只 `identity add` → 无 worktree | 确认 `session start` 必报 `Polecat not found`；**补上 `pool-init` + `polecat_names`** ✔ |
+| 5.3.1 | 工位上线后精确派发 | 三工位 ●；不再错位 ✔ |
+| 5.4 | `gt down && gt up` | 工位自动恢复在线 ✔ |
+| 6.1–6.4 | bare + HEAD→main + 钩子 + dry-run | 全部一致、零副作用 ✔ |
+| 7.2 | 4 份 `AGENTS.md` 约束 | 写入并生效 ✔ |
+| 8.2 | git push 触发派发 | **feat-pow → 精确落 dev1；verify-pow → 精确落 tester** ✔ |
+| 8.3 | 台账核对 | **发现 `identity list` 不显示 Hook（已改为 `gt polecat status`）** |
+| 8.4 | `gt peek` 看 Agent 干活 | dev1 汇报“仅改 `calc.py`（+9 行）、未动 `test_*.py`”；**发现 `gt peek` 必须写 `rig/工位`（已修）** |
+| 8.5 | MR 进队列与合并 | MR `collab-wisp-bgz` 进队列（`ready`）；**发现 refinery 跑偏不合并（已补判定与兜底）** |
+| 8.6 | tester 验收闭环 | 117 tests OK + 独立探针 12/12 + 改动范围仅 `calc.py`；**tester 独立发现 origin/main 未合并** ✔ |
+| 十 | 排错表 | 新增 12 类真实问题（pool-init / rigs.json / peek 格式 / Hook 口径 / MQ ID 截断 / refinery 跑偏 / .beads 权限 / GitHub 限流 等） |
 
 ---
 
@@ -942,3 +1121,4 @@ gt session list
 |------|------|
 | 2026-10-20 19:20 | 初版：版本核查结论、git 任务通道、三层提示词约束、端到端事例、协作流程全景 |
 | 2026-10-20 21:40 | **按真实演练结果修正**：① 新增 5.3.1「工位必须在线」（否则指定目标被忽略，任务错派）；② 6.1 补 bare 仓库 HEAD 必须指向 `main`；③ 6.2 钩子改用 `git --git-dir` + `unset GIT_*`（否则 `GIT_DIR` 污染导致派发失败）；④ 第十节新增 8 类真实故障与「复位工位状态」；⑤ 第十二节补全真实演练验证记录；⑥ 同步修正桥脚本 `install-hook`（HEAD 与 git 环境清理） |
+| 2026-10-20 23:10 | **从零重建全流程回归后的大修**：① 5.3 补 `pool-init` 与 `polecat_names`（只 `identity add` 无 worktree，`session start` 必失败）；② 5.2 验证口径由 `rigs.json` 改为 `gt rig list`，并补 `--force`/`--adopt` 排错；③ 8.3 Hook 查看改为 `gt polecat status`（`identity list` 不输出 Hook，`gt hook show` 报 no beads database）；④ 8.4 `gt peek` 参数格式；⑤ 8.5 补 `mq list` ID 截断与 refinery 跑偏判定/兜底；⑥ 第四节首轮 `identity list` 预期报错说明；⑦ 排错表新增 12 类；⑧ 新增全流程回归验证记录 |
