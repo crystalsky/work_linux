@@ -97,6 +97,9 @@
 - **devops_python**
   - [pip download 跨平台/版本依赖包下载指南](devops_python/20260717-pip-download-cross-platform.md)
   - [Python3.11 glibc2.27 跨架构 markdown 生态离线 wheel 下载指南](devops_python/20260911-pip-download-markdown-ecosystem-wheels.md)
+- **devops_sccache**
+  - [sccache 0.18.0 安装与使用手册（Redis 共享编译缓存 + CMake/C++ 验证工程）](devops_sccache/20261022-sccache-install-usage-manual.md)（含 `scripts/devops/sccache-verify.sh`、`scripts/devops/sccache-env.sh`、`examples/cpp_sccache_demo/`；Ubuntu 仓库包无 Redis 后端的判别方法、经 gh-proxy 取官方 musl 二进制、`/usr/bin/sccache` 实为 sccache-dist 的坑、静/热两轮命中 5/5）
+  - [sccache 0.18.0 配置手册（配置文件、环境变量、Redis 与多级缓存）](devops_sccache/20261022-sccache-config-manual.md)（含 `scripts/devops/sccache-config.toml`；配置优先级与服务端重启、disk→redis 多级缓存与回填、`SCCACHE_BASEDIRS` 归一化、共享 Redis `noeviction` + 无 `maxmemory` 下的换库/前缀/TTL 局部治理）
 - **devops_vscode**
   - [VS Code 桌面版 deb 安装指南](devops_vscode/20260601-vscode-desktop-deb-install.md)
   - [VS Code 命令行插件安装与离线部署指南](devops_vscode/20260817-vscode-cli-ext-install-guide.md)
