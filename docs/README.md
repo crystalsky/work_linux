@@ -61,6 +61,7 @@
   - [fd + fzf 安装配置与常用查找命令使用手册](devops_shell/20260920-fd-fzf-install-usage-guide.md)
   - [direnv 目录级环境变量管理：work_linux 仓库 .envrc + .env.default 落地手册](devops_shell/20261017-direnv-env-management.md)（含仓库文件 `.envrc`、`.env.default`）
   - [Linux Mint 环境 Oh My Zsh 安装配置与插件使用手册](devops_shell/20261020-oh-my-zsh-install-config-guide.md)（含 nvm / PATH 环境迁移、`/etc/profile.d` 补齐）
+  - [ripgrep（rg）文本检索工具：常用用例、流匹配与工程化用法大全](devops_shell/20261021-ripgrep-usage-guide.md)（rg 15.2.0 @ `~/.local/bin/rg`，`+pcre2`；查文件 / 查字符串 / stdin-压缩包流匹配 / PCRE2 多行正则 / 20 条组合用例；含 `-L` 与 `grep` 语义差异、`--pre` 传参坑）
 - **devops_editor**
   - [vim 安装与依赖修复记录](devops_editor/20260601-vim-install-record.md)
   - [micro 终端文本编辑器：功能说明、使用手册、配置与插件管理指南](devops_editor/20260930-micro-editor-install-config-guide.md)（含 `scripts/editor/micro_setup.sh`）
